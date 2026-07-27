@@ -237,6 +237,12 @@ button { cursor: pointer; }
 
 .product-details { display: grid; grid-template-columns: .65fr 1.35fr; gap: 30px 60px; }
 .product-details > p { margin: 0; font-size: 20px; line-height: 1.7; }
+.compatibility-content > p { margin: 0 0 18px; color: var(--muted); font-size: 17px; line-height: 1.65; }
+.compatibility-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin: 0 0 20px; padding: 0; list-style: none; }
+.compatibility-list li { display: flex; justify-content: space-between; gap: 12px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px; background: white; }
+.compatibility-list strong { font-size: 14px; }
+.compatibility-list span { color: var(--muted); font-size: 13px; }
+.compatibility-content .compatible-parts { margin-bottom: 0; padding: 16px; border-radius: 12px; background: #eef4ff; color: var(--ink); }
 .compatibility-warning { grid-column: 2; padding: 18px; border: 1px solid #cbdcff; border-radius: 14px; background: white; color: var(--muted); }
 
 .contact-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
@@ -329,6 +335,7 @@ button { cursor: pointer; }
   .product-description { grid-template-columns: 1fr; }
   .product-benefits { grid-template-columns: 1fr; }
   .product-details { grid-template-columns: 1fr; }
+  .compatibility-list { grid-template-columns: 1fr; }
   .compatibility-warning { grid-column: 1; }
   .info-panel { grid-template-columns: 1fr; }
   .footer-grid { grid-template-columns: 1fr 1fr; }
