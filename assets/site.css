@@ -217,6 +217,24 @@ button { cursor: pointer; }
 .spec-list strong { text-align: right; }
 .delivery-note { margin-top: 18px; padding: 18px; border-radius: 14px; background: var(--soft); }
 .delivery-note p { margin: 6px 0 0; color: var(--muted); font-size: 14px; }
+
+.product-description-section { padding-block: 76px; }
+.product-description {
+  display: grid;
+  grid-template-columns: .65fr 1.35fr;
+  gap: 30px 60px;
+  align-items: start;
+}
+.product-description__heading h2 { margin: 0; font-size: clamp(30px, 4vw, 48px); line-height: 1.08; letter-spacing: -.04em; }
+.product-description__copy > p { margin: 0 0 18px; color: #30415d; font-size: 18px; line-height: 1.72; }
+.product-benefits { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin: 28px 0; padding: 0; list-style: none; }
+.product-benefits li { padding: 18px; border: 1px solid var(--line); border-radius: 14px; background: var(--soft); }
+.product-benefits strong, .product-benefits span { display: block; }
+.product-benefits strong { font-size: 14px; }
+.product-benefits span { margin-top: 7px; color: var(--muted); font-size: 13px; line-height: 1.5; }
+.product-description__note { padding: 18px; border-left: 4px solid var(--blue); border-radius: 0 14px 14px 0; background: #eef4ff; color: var(--muted); }
+.product-description__note strong { color: var(--ink); }
+
 .product-details { display: grid; grid-template-columns: .65fr 1.35fr; gap: 30px 60px; }
 .product-details > p { margin: 0; font-size: 20px; line-height: 1.7; }
 .compatibility-warning { grid-column: 2; padding: 18px; border: 1px solid #cbdcff; border-radius: 14px; background: white; color: var(--muted); }
@@ -308,6 +326,8 @@ button { cursor: pointer; }
   .product-layout { grid-template-columns: 1fr; }
   .product-info { position: static; }
   .gallery-thumbs { grid-template-columns: repeat(5, 1fr); }
+  .product-description { grid-template-columns: 1fr; }
+  .product-benefits { grid-template-columns: 1fr; }
   .product-details { grid-template-columns: 1fr; }
   .compatibility-warning { grid-column: 1; }
   .info-panel { grid-template-columns: 1fr; }
