@@ -28,11 +28,41 @@
     renderCart();
   }
 
-  function renderCart() {
-    const items = Object.entries(cart)
+  const getCartItems = () =>
+    Object.entries(cart)
       .filter(([slug, quantity]) => bySlug[slug] && quantity > 0)
       .map(([slug, quantity]) => ({ ...bySlug[slug], quantity }));
 
+  function ensureCheckoutForm() {
+    const totalBlock = document.querySelector("[data-cart-total]")?.closest(".cart-total");
+    if (!totalBlock || document.querySelector("[data-checkout-form]")) return;
+
+    totalBlock.insertAdjacentHTML(
+      "afterend",
+      [
+        '<form class="checkout-form" data-checkout-form>',
+        "<h3>Оформление и оплата</h3>",
+        '<p class="checkout-form__lead">Заполните данные покупателя. Защищённая оплата картой или через СБП станет доступна после активации магазина в ЮKassa.</p>',
+        '<label class="checkout-field"><span>ФИО *</span><input name="customerName" type="text" autocomplete="name" minlength="5" maxlength="120" placeholder="Иванов Иван Иванович" required></label>',
+        '<div class="checkout-form__grid">',
+        '<label class="checkout-field"><span>Телефон *</span><input name="phone" type="tel" inputmode="tel" autocomplete="tel" maxlength="24" placeholder="+7 900 000-00-00" required></label>',
+        '<label class="checkout-field"><span>Email для чека *</span><input name="email" type="email" autocomplete="email" maxlength="120" placeholder="mail@example.ru" required></label>',
+        "</div>",
+        '<label class="checkout-field"><span>Модель пылесоса</span><input name="vacuumModel" type="text" maxlength="120" placeholder="Например: LG A9K-PRO1"></label>',
+        '<label class="checkout-checkbox"><input name="consent" type="checkbox" required><span>Согласен на обработку персональных данных и принимаю <a href="' + assetPrefix() + 'privacy/" target="_blank" rel="noopener">политику конфиденциальности</a>.</span></label>',
+        '<button class="button button--wide checkout-submit" type="button" disabled data-checkout-submit>Оплата подключается</button>',
+        '<p class="checkout-payment-note">Данные пока никуда не отправляются. После подключения оплата будет проходить на защищённой странице ЮKassa; HELIONYX не получает и не хранит данные банковской карты.</p>',
+        "</form>",
+      ].join("")
+    );
+
+    const note = document.querySelector(".cart-note");
+    if (note) note.textContent = "Стоимость и срок доставки подтверждаем перед оплатой.";
+  }
+
+  function renderCart() {
+    ensureCheckoutForm();
+    const items = getCartItems();
     const count = items.reduce((sum, item) => sum + item.quantity, 0);
     const total = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
 
