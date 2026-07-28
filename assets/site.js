@@ -1,4 +1,12 @@
 (function () {
+  if (!document.querySelector('link[rel~="icon"]')) {
+    const favicon = document.createElement("link");
+    favicon.rel = "icon";
+    favicon.type = "image/svg+xml";
+    favicon.href = "/favicon.svg";
+    document.head.appendChild(favicon);
+  }
+
   const PRODUCTS = window.HELIONYX_PRODUCTS || [];
   const bySlug = Object.fromEntries(PRODUCTS.map((product) => [product.slug, product]));
   const storageKey = "helionyx-cart";
