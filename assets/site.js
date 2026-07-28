@@ -150,6 +150,7 @@
   }
 
   async function loadPickupPoints(button) {
+    if (button.disabled) return;
     const form = button.closest("[data-checkout-form]");
     const cityInput = form?.querySelector("[data-delivery-city]");
     const status = form?.querySelector("[data-pvz-status]");
@@ -293,9 +294,14 @@
       const pvzInput = form?.querySelector("[data-cdek-pvz]");
       const selectWrap = form?.querySelector("[data-pvz-select-wrap]");
       const status = form?.querySelector("[data-pvz-status]");
+      const loadButton = form?.querySelector("[data-load-pvz]");
+      const method = form?.querySelector("[data-delivery-method]");
       if (pvzInput) pvzInput.value = "";
       if (selectWrap) selectWrap.hidden = true;
       if (status) status.textContent = "";
+      if (cityInput.value.trim().length >= 2 && method?.value === "cdek-pvz" && loadButton) {
+        loadPickupPoints(loadButton);
+      }
     }
   });
 
