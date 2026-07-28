@@ -4,7 +4,8 @@ import re
 import shutil
 import sys
 
-INCLUDE = "    include /etc/nginx/snippets/helionyx-api.conf;\n"
+INCLUDE_PATH = "/etc/nginx/snippets/helionyx-api.conf"
+INCLUDE = f"    include {INCLUDE_PATH};\n"
 
 
 def block_end(text, opening_brace):
@@ -20,24 +21,34 @@ def block_end(text, opening_brace):
     raise RuntimeError("Unclosed nginx server block")
 
 
+def is_helionyx_server(block):
+    has_domain = re.search(
+        r"\bserver_name\b[^;]*(?:\bhelionyx\.store\b|\bwww\.helionyx\.store\b)",
+        block,
+    )
+    has_web_root = re.search(r"\broot\s+/var/www/helionyx(?:/[^;\s]*)?\s*;", block)
+    return bool(has_domain or has_web_root)
+
+
 def update(path):
     real_path = os.path.realpath(path)
     with open(real_path, "r", encoding="utf-8") as handle:
         text = handle.read()
 
-    if "/etc/nginx/snippets/helionyx-api.conf" in text:
-        return False
-
+    matched = False
     insertions = []
     for match in re.finditer(r"\bserver\s*\{", text):
         opening = text.find("{", match.start())
         closing = block_end(text, opening)
         block = text[match.start():closing + 1]
-        if re.search(r"\bserver_name\b[^;]*\bhelionyx\.store\b", block):
+        if not is_helionyx_server(block):
+            continue
+        matched = True
+        if INCLUDE_PATH not in block:
             insertions.append(closing)
 
     if not insertions:
-        return False
+        return matched, False
 
     shutil.copy2(real_path, real_path + ".helionyx-api.bak")
     for closing in reversed(insertions):
@@ -45,13 +56,30 @@ def update(path):
 
     with open(real_path, "w", encoding="utf-8") as handle:
         handle.write(text)
-    return True
+    return True, True
 
 
 if __name__ == "__main__":
-    changed = False
+    matched_any = False
+    changed_any = False
+    seen = set()
+
     for filename in sys.argv[1:]:
-        if os.path.exists(filename):
-            changed = update(filename) or changed
-    if not changed:
-        print("Nginx API include already present or no HELIONYX server block found")
+        if not os.path.exists(filename):
+            continue
+        real_path = os.path.realpath(filename)
+        if real_path in seen:
+            continue
+        seen.add(real_path)
+        matched, changed = update(real_path)
+        matched_any = matched_any or matched
+        changed_any = changed_any or changed
+
+    if not matched_any:
+        print("HELIONYX nginx server block was not found", file=sys.stderr)
+        raise SystemExit(1)
+
+    if changed_any:
+        print("HELIONYX API include installed")
+    else:
+        print("HELIONYX API include already present")
