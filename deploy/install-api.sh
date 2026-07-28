@@ -21,7 +21,14 @@ install -m 0644 "$SOURCE_DIR/deploy/helionyx-api.service" /etc/systemd/system/he
 install -d -m 0755 /etc/nginx/snippets
 install -m 0644 "$SOURCE_DIR/deploy/nginx-api.conf" /etc/nginx/snippets/helionyx-api.conf
 
-mapfile -t NGINX_SITES < <(find /etc/nginx/sites-enabled -maxdepth 1 \( -type f -o -type l \) -print)
+shopt -s nullglob
+NGINX_SITES=(
+  /etc/nginx/sites-enabled/*
+  /etc/nginx/conf.d/*.conf
+  /etc/nginx/nginx.conf
+)
+shopt -u nullglob
+
 python3 "$SOURCE_DIR/deploy/ensure-nginx-include.py" "${NGINX_SITES[@]}"
 
 if ! nginx -t; then
@@ -41,5 +48,8 @@ systemctl restart helionyx-api.service
 systemctl reload nginx
 
 curl -fsS --max-time 10 http://127.0.0.1:8787/api/health >/dev/null
+nginx_dump="$(nginx -T 2>&1)"
+grep -Fq "proxy_pass http://127.0.0.1:8787;" <<<"$nginx_dump"
+
 rm -f "$ENV_FILE"
 echo "HELIONYX API deployed"
