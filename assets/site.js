@@ -12,6 +12,8 @@
   };
 
   let cart = readCart();
+  let citySearchTimer;
+  let citySearchController;
 
   const formatPrice = (value) =>
     new Intl.NumberFormat("ru-RU").format(value) + " ₽";
@@ -66,7 +68,7 @@
         '<label class="checkout-field"><span>Модель пылесоса</span><input name="vacuumModel" type="text" maxlength="120" placeholder="Например: LG A9K-PRO1"></label>',
         '<div class="checkout-delivery">',
         "<h4>Доставка СДЭК</h4>",
-        '<label class="checkout-field"><span>Город или населённый пункт *</span><input name="deliveryCity" data-delivery-city type="text" autocomplete="address-level2" maxlength="120" placeholder="Например: Воронеж" required></label>',
+        '<div class="checkout-city-field"><label class="checkout-field"><span>Город или населённый пункт *</span><input name="deliveryCity" data-delivery-city type="text" autocomplete="off" maxlength="120" placeholder="Начните вводить: Воронеж" role="combobox" aria-autocomplete="list" aria-expanded="false" required></label><input name="cdekCityCode" data-cdek-city-code type="hidden"><div class="checkout-city-suggestions" data-city-suggestions role="listbox" hidden></div><p class="checkout-city-status" data-city-status aria-live="polite"></p></div>',
         '<label class="checkout-field"><span>Способ получения *</span><select name="deliveryMethod" data-delivery-method required><option value="cdek-pvz">СДЭК — до пункта выдачи</option><option value="cdek-courier">СДЭК — курьером до адреса</option></select></label>',
         '<div data-delivery-pvz><label class="checkout-field"><span>Пункт выдачи СДЭК *</span><input name="cdekPvz" data-cdek-pvz type="text" maxlength="180" placeholder="Сначала укажите город и загрузите ПВЗ" required></label><div class="checkout-pvz-actions"><button class="checkout-map-button" type="button" data-load-pvz>Показать ПВЗ СДЭК</button><a class="checkout-map-link" href="https://www.cdek.ru/ru/offices/" target="_blank" rel="noopener">Открыть карту ↗</a></div><p class="checkout-pvz-status" data-pvz-status role="status" aria-live="polite"></p><label class="checkout-field" data-pvz-select-wrap hidden><span>Выберите удобный пункт</span><select data-pvz-select><option value="">Выберите ПВЗ</option></select></label></div>',
         '<div data-delivery-courier hidden><label class="checkout-field"><span>Адрес доставки *</span><input name="deliveryAddress" type="text" autocomplete="street-address" maxlength="240" placeholder="Улица, дом, квартира"></label></div>',
@@ -149,15 +151,80 @@
     document.querySelector("[data-cart-drawer]")?.setAttribute("aria-hidden", "true");
   }
 
-  async function loadPickupPoints(button) {
+  function closeCitySuggestions(form) {
+    const suggestions = form?.querySelector("[data-city-suggestions]");
+    const input = form?.querySelector("[data-delivery-city]");
+    if (suggestions) suggestions.hidden = true;
+    if (input) input.setAttribute("aria-expanded", "false");
+  }
+
+  async function loadCitySuggestions(input) {
+    const form = input.closest("[data-checkout-form]");
+    const suggestions = form?.querySelector("[data-city-suggestions]");
+    const status = form?.querySelector("[data-city-status]");
+    const query = input.value.trim();
+    if (!form || !suggestions || query.length < 2) {
+      closeCitySuggestions(form);
+      if (status) status.textContent = query ? "Введите ещё одну букву." : "";
+      return;
+    }
+
+    citySearchController?.abort();
+    citySearchController = new AbortController();
+    if (status) status.textContent = "Ищем населённый пункт…";
+
+    try {
+      const response = await fetch(`/api/cdek/cities?q=${encodeURIComponent(query)}`, {
+        headers: { Accept: "application/json" },
+        signal: citySearchController.signal,
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || "Не удалось загрузить города.");
+      const cities = Array.isArray(payload.cities) ? payload.cities : [];
+      suggestions.replaceChildren();
+
+      cities.forEach((city) => {
+        const details = [city.sub_region, city.region].filter(Boolean);
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "checkout-city-option";
+        button.dataset.cityOption = "";
+        button.dataset.cityCode = city.code;
+        button.dataset.cityName = city.name;
+        const name = document.createElement("strong");
+        name.textContent = city.name;
+        const region = document.createElement("span");
+        region.textContent = details.join(", ");
+        button.append(name, region);
+        suggestions.append(button);
+      });
+
+      suggestions.hidden = cities.length === 0;
+      input.setAttribute("aria-expanded", cities.length ? "true" : "false");
+      if (status) status.textContent = cities.length ? "Выберите населённый пункт из списка." : "Ничего не найдено.";
+    } catch (error) {
+      if (error.name === "AbortError") return;
+      closeCitySuggestions(form);
+      if (status) status.textContent = error.message || "Не удалось загрузить города.";
+    }
+  }
+
+  function scheduleCitySearch(input) {
+    window.clearTimeout(citySearchTimer);
+    citySearchTimer = window.setTimeout(() => loadCitySuggestions(input), 350);
+  }
+
+  async function loadPickupPoints(button, selectedCityCode = "") {
     if (button.disabled) return;
     const form = button.closest("[data-checkout-form]");
     const cityInput = form?.querySelector("[data-delivery-city]");
+    const cityCodeInput = form?.querySelector("[data-cdek-city-code]");
     const status = form?.querySelector("[data-pvz-status]");
     const select = form?.querySelector("[data-pvz-select]");
     const selectWrap = form?.querySelector("[data-pvz-select-wrap]");
     const pvzInput = form?.querySelector("[data-cdek-pvz]");
     const city = (cityInput?.value || "").trim();
+    const cityCode = selectedCityCode || cityCodeInput?.value || "";
 
     if (!city) {
       cityInput?.focus();
@@ -170,7 +237,8 @@
     if (status) status.textContent = "Получаем актуальные пункты выдачи СДЭК.";
 
     try {
-      const response = await fetch(`/api/cdek/offices?city=${encodeURIComponent(city)}`, {
+      const officeQuery = cityCode ? `city_code=${encodeURIComponent(cityCode)}&city=${encodeURIComponent(city)}` : `city=${encodeURIComponent(city)}`;
+      const response = await fetch(`/api/cdek/offices?${officeQuery}`, {
         headers: { Accept: "application/json" },
       });
       const payload = await response.json();
@@ -200,6 +268,21 @@
   }
 
   document.addEventListener("click", (event) => {
+    const cityOption = event.target.closest("[data-city-option]");
+    if (cityOption) {
+      const form = cityOption.closest("[data-checkout-form]");
+      const cityInput = form?.querySelector("[data-delivery-city]");
+      const cityCodeInput = form?.querySelector("[data-cdek-city-code]");
+      const cityStatus = form?.querySelector("[data-city-status]");
+      const loadButton = form?.querySelector("[data-load-pvz]");
+      if (cityInput) cityInput.value = cityOption.dataset.cityName || "";
+      if (cityCodeInput) cityCodeInput.value = cityOption.dataset.cityCode || "";
+      if (cityStatus) cityStatus.textContent = "Населённый пункт выбран.";
+      closeCitySuggestions(form);
+      if (loadButton) loadPickupPoints(loadButton, cityOption.dataset.cityCode || "");
+      return;
+    }
+
     const add = event.target.closest("[data-product]");
     if (add) {
       const slug = add.dataset.product;
@@ -288,25 +371,32 @@
       if (pvzInput) pvzInput.value = pvzSelect.value;
     }
 
+
+  });
+
+  document.addEventListener("input", (event) => {
     const cityInput = event.target.closest("[data-delivery-city]");
-    if (cityInput) {
-      const form = cityInput.closest("[data-checkout-form]");
-      const pvzInput = form?.querySelector("[data-cdek-pvz]");
-      const selectWrap = form?.querySelector("[data-pvz-select-wrap]");
-      const status = form?.querySelector("[data-pvz-status]");
-      const loadButton = form?.querySelector("[data-load-pvz]");
-      const method = form?.querySelector("[data-delivery-method]");
-      if (pvzInput) pvzInput.value = "";
-      if (selectWrap) selectWrap.hidden = true;
-      if (status) status.textContent = "";
-      if (cityInput.value.trim().length >= 2 && method?.value === "cdek-pvz" && loadButton) {
-        loadPickupPoints(loadButton);
-      }
-    }
+    if (!cityInput) return;
+    const form = cityInput.closest("[data-checkout-form]");
+    const cityCodeInput = form?.querySelector("[data-cdek-city-code]");
+    const pvzInput = form?.querySelector("[data-cdek-pvz]");
+    const selectWrap = form?.querySelector("[data-pvz-select-wrap]");
+    const pvzStatus = form?.querySelector("[data-pvz-status]");
+    if (cityCodeInput) cityCodeInput.value = "";
+    if (pvzInput) pvzInput.value = "";
+    if (selectWrap) selectWrap.hidden = true;
+    if (pvzStatus) pvzStatus.textContent = "";
+    scheduleCitySearch(cityInput);
   });
 
   document.addEventListener("keydown", (event) => {
-    if (event.key === "Escape") closeCart();
+    if (event.key !== "Escape") return;
+    const visibleSuggestions = document.querySelector("[data-city-suggestions]:not([hidden])");
+    if (visibleSuggestions) {
+      closeCitySuggestions(visibleSuggestions.closest("[data-checkout-form]"));
+      return;
+    }
+    closeCart();
   });
 
   renderCart();
