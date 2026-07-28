@@ -42,5 +42,26 @@ jobs:
           rsync -az --delete \
             --exclude '.git/' \
             --exclude '.github/' \
+            --exclude 'server/' \
+            --exclude 'deploy/' \
             ./ "$VPS_USER@$VPS_HOST:/var/www/helionyx/"
           ssh "$VPS_USER@$VPS_HOST" "test -f /var/www/helionyx/index.html"
+
+      - name: Deploy CDEK API
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          CDEK_CLIENT_ID: ${{ secrets.CDEK_CLIENT_ID }}
+          CDEK_CLIENT_SECRET: ${{ secrets.CDEK_CLIENT_SECRET }}
+        run: |
+          umask 077
+          API_ENV="$RUNNER_TEMP/helionyx-api.env"
+          printf 'CDEK_CLIENT_ID=%s\nCDEK_CLIENT_SECRET=%s\nHELIONYX_API_HOST=127.0.0.1\nHELIONYX_API_PORT=8787\n' \
+            "$CDEK_CLIENT_ID" "$CDEK_CLIENT_SECRET" > "$API_ENV"
+
+          ssh "$VPS_USER@$VPS_HOST" "rm -rf /tmp/helionyx-deploy && mkdir -p /tmp/helionyx-deploy/server /tmp/helionyx-deploy/deploy"
+          rsync -az --delete server/ "$VPS_USER@$VPS_HOST:/tmp/helionyx-deploy/server/"
+          rsync -az --delete deploy/ "$VPS_USER@$VPS_HOST:/tmp/helionyx-deploy/deploy/"
+          scp "$API_ENV" "$VPS_USER@$VPS_HOST:/tmp/helionyx-api.env"
+          ssh "$VPS_USER@$VPS_HOST" "bash /tmp/helionyx-deploy/deploy/install-api.sh /tmp/helionyx-deploy /tmp/helionyx-api.env"
+          rm -f "$API_ENV"
