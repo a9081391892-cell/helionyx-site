@@ -33,6 +33,21 @@
       .filter(([slug, quantity]) => bySlug[slug] && quantity > 0)
       .map(([slug, quantity]) => ({ ...bySlug[slug], quantity }));
 
+  function syncDeliveryFields(select) {
+    const method = select || document.querySelector("[data-delivery-method]");
+    if (!method) return;
+    const pvzBlock = document.querySelector("[data-delivery-pvz]");
+    const courierBlock = document.querySelector("[data-delivery-courier]");
+    const pvzInput = pvzBlock?.querySelector("input");
+    const courierInput = courierBlock?.querySelector("input");
+    const isCourier = method.value === "cdek-courier";
+
+    if (pvzBlock) pvzBlock.hidden = isCourier;
+    if (courierBlock) courierBlock.hidden = !isCourier;
+    if (pvzInput) pvzInput.required = !isCourier;
+    if (courierInput) courierInput.required = isCourier;
+  }
+
   function ensureCheckoutForm() {
     const totalBlock = document.querySelector("[data-cart-total]")?.closest(".cart-total");
     if (!totalBlock || document.querySelector("[data-checkout-form]")) return;
@@ -49,6 +64,14 @@
         '<label class="checkout-field"><span>Email для чека *</span><input name="email" type="email" autocomplete="email" maxlength="120" placeholder="mail@example.ru" required></label>',
         "</div>",
         '<label class="checkout-field"><span>Модель пылесоса</span><input name="vacuumModel" type="text" maxlength="120" placeholder="Например: LG A9K-PRO1"></label>',
+        '<div class="checkout-delivery">',
+        "<h4>Доставка СДЭК</h4>",
+        '<label class="checkout-field"><span>Город или населённый пункт *</span><input name="deliveryCity" type="text" autocomplete="address-level2" maxlength="120" placeholder="Например: Воронеж" required></label>',
+        '<label class="checkout-field"><span>Способ получения *</span><select name="deliveryMethod" data-delivery-method required><option value="cdek-pvz">СДЭК — до пункта выдачи</option><option value="cdek-courier">СДЭК — курьером до адреса</option></select></label>',
+        '<div data-delivery-pvz><label class="checkout-field"><span>Пункт выдачи СДЭК *</span><input name="cdekPvz" type="text" maxlength="180" placeholder="Код или адрес выбранного ПВЗ" required></label><a class="checkout-map-link" href="https://www.cdek.ru/ru/offices/" target="_blank" rel="noopener">Найти ПВЗ на карте СДЭК ↗</a></div>',
+        '<div data-delivery-courier hidden><label class="checkout-field"><span>Адрес доставки *</span><input name="deliveryAddress" type="text" autocomplete="street-address" maxlength="240" placeholder="Улица, дом, квартира"></label></div>',
+        '<p class="checkout-delivery__note">Стоимость и срок доставки рассчитываются перед оплатой.</p>',
+        "</div>",
         '<label class="checkout-checkbox"><input name="consent" type="checkbox" required><span>Согласен на обработку персональных данных и принимаю <a href="' + assetPrefix() + 'privacy/" target="_blank" rel="noopener">политику конфиденциальности</a>.</span></label>',
         '<button class="button button--wide checkout-submit" type="button" disabled data-checkout-submit>Оплата подключается</button>',
         '<p class="checkout-payment-note">Данные пока никуда не отправляются. После подключения оплата будет проходить на защищённой странице ЮKassa; HELIONYX не получает и не хранит данные банковской карты.</p>',
@@ -58,6 +81,7 @@
 
     const note = document.querySelector(".cart-note");
     if (note) note.textContent = "Стоимость и срок доставки подтверждаем перед оплатой.";
+    syncDeliveryFields();
   }
 
   function renderCart() {
@@ -196,6 +220,11 @@
     catalogSearch.value = initialQuery;
     applyFilters();
   }
+
+  document.addEventListener("change", (event) => {
+    const deliveryMethod = event.target.closest("[data-delivery-method]");
+    if (deliveryMethod) syncDeliveryFields(deliveryMethod);
+  });
 
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape") closeCart();
