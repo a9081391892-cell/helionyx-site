@@ -66,9 +66,9 @@
         '<label class="checkout-field"><span>Модель пылесоса</span><input name="vacuumModel" type="text" maxlength="120" placeholder="Например: LG A9K-PRO1"></label>',
         '<div class="checkout-delivery">',
         "<h4>Доставка СДЭК</h4>",
-        '<label class="checkout-field"><span>Город или населённый пункт *</span><input name="deliveryCity" type="text" autocomplete="address-level2" maxlength="120" placeholder="Например: Воронеж" required></label>',
+        '<label class="checkout-field"><span>Город или населённый пункт *</span><input name="deliveryCity" data-delivery-city type="text" autocomplete="address-level2" maxlength="120" placeholder="Например: Воронеж" required></label>',
         '<label class="checkout-field"><span>Способ получения *</span><select name="deliveryMethod" data-delivery-method required><option value="cdek-pvz">СДЭК — до пункта выдачи</option><option value="cdek-courier">СДЭК — курьером до адреса</option></select></label>',
-        '<div data-delivery-pvz><label class="checkout-field"><span>Пункт выдачи СДЭК *</span><input name="cdekPvz" type="text" maxlength="180" placeholder="Код или адрес выбранного ПВЗ" required></label><a class="checkout-map-link" href="https://www.cdek.ru/ru/offices/" target="_blank" rel="noopener">Найти ПВЗ на карте СДЭК ↗</a></div>',
+        '<div data-delivery-pvz><label class="checkout-field"><span>Пункт выдачи СДЭК *</span><input name="cdekPvz" data-cdek-pvz type="text" maxlength="180" placeholder="Сначала укажите город и загрузите ПВЗ" required></label><div class="checkout-pvz-actions"><button class="checkout-map-button" type="button" data-load-pvz>Показать ПВЗ СДЭК</button><a class="checkout-map-link" href="https://www.cdek.ru/ru/offices/" target="_blank" rel="noopener">Открыть карту ↗</a></div><p class="checkout-pvz-status" data-pvz-status role="status" aria-live="polite"></p><label class="checkout-field" data-pvz-select-wrap hidden><span>Выберите удобный пункт</span><select data-pvz-select><option value="">Выберите ПВЗ</option></select></label></div>',
         '<div data-delivery-courier hidden><label class="checkout-field"><span>Адрес доставки *</span><input name="deliveryAddress" type="text" autocomplete="street-address" maxlength="240" placeholder="Улица, дом, квартира"></label></div>',
         '<p class="checkout-delivery__note">Стоимость и срок доставки рассчитываются перед оплатой.</p>',
         "</div>",
@@ -149,6 +149,55 @@
     document.querySelector("[data-cart-drawer]")?.setAttribute("aria-hidden", "true");
   }
 
+  async function loadPickupPoints(button) {
+    const form = button.closest("[data-checkout-form]");
+    const cityInput = form?.querySelector("[data-delivery-city]");
+    const status = form?.querySelector("[data-pvz-status]");
+    const select = form?.querySelector("[data-pvz-select]");
+    const selectWrap = form?.querySelector("[data-pvz-select-wrap]");
+    const pvzInput = form?.querySelector("[data-cdek-pvz]");
+    const city = (cityInput?.value || "").trim();
+
+    if (!city) {
+      cityInput?.focus();
+      if (status) status.textContent = "Сначала укажите город или населённый пункт.";
+      return;
+    }
+
+    button.disabled = true;
+    button.textContent = "Загружаем…";
+    if (status) status.textContent = "Получаем актуальные пункты выдачи СДЭК.";
+
+    try {
+      const response = await fetch(`/api/cdek/offices?city=${encodeURIComponent(city)}`, {
+        headers: { Accept: "application/json" },
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || "Не удалось загрузить ПВЗ.");
+      const points = Array.isArray(payload.points) ? payload.points : [];
+      if (!points.length) throw new Error("В этом городе пункты выдачи не найдены.");
+
+      select.replaceChildren(new Option("Выберите ПВЗ", ""));
+      points.forEach((point) => {
+        const label = `${point.address} · ${point.code}${point.work_time ? ` · ${point.work_time}` : ""}`;
+        const option = new Option(label, `${point.code} — ${point.address}`);
+        option.dataset.code = point.code || "";
+        option.dataset.address = point.address || "";
+        select.add(option);
+      });
+      if (selectWrap) selectWrap.hidden = false;
+      if (pvzInput) pvzInput.value = "";
+      if (status) status.textContent = `Найдено пунктов: ${points.length}. Выберите удобный ПВЗ.`;
+      select.focus();
+    } catch (error) {
+      if (selectWrap) selectWrap.hidden = true;
+      if (status) status.textContent = error.message || "Не удалось загрузить ПВЗ СДЭК.";
+    } finally {
+      button.disabled = false;
+      button.textContent = "Показать ПВЗ СДЭК";
+    }
+  }
+
   document.addEventListener("click", (event) => {
     const add = event.target.closest("[data-product]");
     if (add) {
@@ -174,6 +223,12 @@
     if (remove) {
       delete cart[remove.dataset.remove];
       saveCart();
+    }
+
+    const loadPvz = event.target.closest("[data-load-pvz]");
+    if (loadPvz) {
+      loadPickupPoints(loadPvz);
+      return;
     }
 
     const thumb = event.target.closest("[data-gallery-image]");
@@ -224,6 +279,24 @@
   document.addEventListener("change", (event) => {
     const deliveryMethod = event.target.closest("[data-delivery-method]");
     if (deliveryMethod) syncDeliveryFields(deliveryMethod);
+
+    const pvzSelect = event.target.closest("[data-pvz-select]");
+    if (pvzSelect) {
+      const form = pvzSelect.closest("[data-checkout-form]");
+      const pvzInput = form?.querySelector("[data-cdek-pvz]");
+      if (pvzInput) pvzInput.value = pvzSelect.value;
+    }
+
+    const cityInput = event.target.closest("[data-delivery-city]");
+    if (cityInput) {
+      const form = cityInput.closest("[data-checkout-form]");
+      const pvzInput = form?.querySelector("[data-cdek-pvz]");
+      const selectWrap = form?.querySelector("[data-pvz-select-wrap]");
+      const status = form?.querySelector("[data-pvz-status]");
+      if (pvzInput) pvzInput.value = "";
+      if (selectWrap) selectWrap.hidden = true;
+      if (status) status.textContent = "";
+    }
   });
 
   document.addEventListener("keydown", (event) => {
