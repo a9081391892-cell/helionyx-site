@@ -158,6 +158,14 @@
     if (input) input.setAttribute("aria-expanded", "false");
   }
 
+  async function readApiJson(response) {
+    const contentType = response.headers.get("content-type") || "";
+    if (!contentType.includes("application/json")) {
+      throw new Error("Сервис СДЭК обновляется. Попробуйте ещё раз через минуту.");
+    }
+    return response.json();
+  }
+
   async function loadCitySuggestions(input) {
     const form = input.closest("[data-checkout-form]");
     const suggestions = form?.querySelector("[data-city-suggestions]");
@@ -178,7 +186,7 @@
         headers: { Accept: "application/json" },
         signal: citySearchController.signal,
       });
-      const payload = await response.json();
+      const payload = await readApiJson(response);
       if (!response.ok) throw new Error(payload.error || "Не удалось загрузить города.");
       const cities = Array.isArray(payload.cities) ? payload.cities : [];
       suggestions.replaceChildren();
@@ -241,7 +249,7 @@
       const response = await fetch(`/api/cdek/offices?${officeQuery}`, {
         headers: { Accept: "application/json" },
       });
-      const payload = await response.json();
+      const payload = await readApiJson(response);
       if (!response.ok) throw new Error(payload.error || "Не удалось загрузить ПВЗ.");
       const points = Array.isArray(payload.points) ? payload.points : [];
       if (!points.length) throw new Error("В этом городе пункты выдачи не найдены.");
