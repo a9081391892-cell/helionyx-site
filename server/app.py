@@ -104,6 +104,40 @@ def cdek_get(path, params):
         raise ApiError("Не удалось получить данные СДЭК") from error
 
 
+
+def search_cities(query):
+    cache_key = "cities:" + query.casefold()
+    cached = cache_get(cache_key)
+    if cached is not None:
+        return cached
+
+    cities = cdek_get("/v2/location/cities", {
+        "country_codes": "RU",
+        "city": query,
+        "size": 20,
+    })
+    if not isinstance(cities, list):
+        raise ApiError("СДЭК вернул некорректный список населённых пунктов")
+
+    results = []
+    seen = set()
+    for item in cities:
+        code = item.get("code")
+        name = item.get("city")
+        if not code or not name or code in seen:
+            continue
+        seen.add(code)
+        results.append({
+            "code": code,
+            "name": name,
+            "region": item.get("region") or "",
+            "sub_region": item.get("sub_region") or "",
+            "postal_codes": item.get("postal_codes") or [],
+        })
+
+    cache_set(cache_key, results, 86400)
+    return results
+
 def resolve_city(city_name):
     cache_key = "city:" + city_name.casefold()
     cached = cache_get(cache_key)
@@ -137,8 +171,16 @@ def resolve_city(city_name):
     return result
 
 
-def pickup_points(city_name):
-    city = resolve_city(city_name)
+def pickup_points(city_name="", city_code=None):
+    if city_code is not None:
+        try:
+            normalized_code = int(city_code)
+        except (TypeError, ValueError) as error:
+            raise ApiError("Некорректный код населённого пункта СДЭК", 400) from error
+        city = {"code": normalized_code, "name": city_name, "region": ""}
+    else:
+        city = resolve_city(city_name)
+
     cache_key = "pvz:" + str(city["code"])
     cached = cache_get(cache_key)
     if cached:
@@ -222,7 +264,7 @@ class Handler(BaseHTTPRequestHandler):
             })
             return
 
-        if parsed.path != "/api/cdek/offices":
+        if parsed.path not in ("/api/cdek/cities", "/api/cdek/offices"):
             self.send_json(404, {"error": "Not found"})
             return
 
@@ -232,13 +274,24 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         query = parse_qs(parsed.query)
-        city = (query.get("city") or [""])[0].strip()
-        if len(city) < 2 or len(city) > 100:
-            self.send_json(400, {"error": "Укажите город или населённый пункт."})
-            return
-
         try:
-            self.send_json(200, pickup_points(city))
+            if parsed.path == "/api/cdek/cities":
+                search = (query.get("q") or [""])[0].strip()
+                if len(search) < 2 or len(search) > 100:
+                    self.send_json(400, {"error": "Введите не менее двух букв."})
+                    return
+                self.send_json(200, {"cities": search_cities(search)})
+                return
+
+            city_name = (query.get("city") or [""])[0].strip()
+            city_code = (query.get("city_code") or [""])[0].strip()
+            if city_code:
+                self.send_json(200, pickup_points(city_name, city_code))
+                return
+            if len(city_name) < 2 or len(city_name) > 100:
+                self.send_json(400, {"error": "Выберите населённый пункт."})
+                return
+            self.send_json(200, pickup_points(city_name))
         except ApiError as error:
             self.send_json(error.status, {"error": str(error)})
         except Exception:
