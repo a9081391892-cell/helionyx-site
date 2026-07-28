@@ -405,3 +405,13 @@ button { cursor: pointer; }
 .checkout-map-button:disabled { cursor: wait; opacity: .6; }
 .checkout-pvz-status { min-height: 18px; margin: 8px 0 0; color: var(--muted); font-size: 11px; }
 [data-pvz-select-wrap][hidden] { display: none; }
+
+/* CDEK city autocomplete */
+.checkout-city-field { position: relative; }
+.checkout-city-suggestions { position: absolute; z-index: 6; top: calc(100% - 20px); right: 0; left: 0; max-height: 260px; overflow-y: auto; padding: 6px; border: 1px solid var(--line); border-radius: 12px; background: white; box-shadow: 0 16px 42px rgba(17,24,39,.16); }
+.checkout-city-suggestions[hidden] { display: none; }
+.checkout-city-option { display: grid; width: 100%; gap: 2px; padding: 10px; border: 0; border-radius: 8px; background: transparent; text-align: left; }
+.checkout-city-option:hover, .checkout-city-option:focus { background: var(--soft); outline: none; }
+.checkout-city-option strong { color: var(--ink); font-size: 13px; }
+.checkout-city-option span { color: var(--muted); font-size: 11px; }
+.checkout-city-status { min-height: 17px; margin: 5px 0 0; color: var(--muted); font-size: 11px; }
