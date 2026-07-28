@@ -397,3 +397,11 @@ button { cursor: pointer; }
 .checkout-map-link { display: inline-block; margin-top: 8px; color: var(--blue); font-size: 12px; font-weight: 800; }
 .checkout-delivery__note { margin: 12px 0 0; color: var(--muted); font-size: 11px; }
 [data-delivery-pvz][hidden], [data-delivery-courier][hidden] { display: none; }
+
+/* CDEK pickup selector */
+.checkout-pvz-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; margin-top: 9px; }
+.checkout-map-button { min-height: 38px; padding: 0 13px; border: 1px solid var(--blue); border-radius: 9px; background: white; color: var(--blue); font-size: 12px; font-weight: 850; }
+.checkout-map-button:hover { background: var(--soft); }
+.checkout-map-button:disabled { cursor: wait; opacity: .6; }
+.checkout-pvz-status { min-height: 18px; margin: 8px 0 0; color: var(--muted); font-size: 11px; }
+[data-pvz-select-wrap][hidden] { display: none; }
