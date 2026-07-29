@@ -22,6 +22,8 @@
   let cart = readCart();
   let citySearchTimer;
   let citySearchController;
+  let paymentAvailable = false;
+  let paymentConfigRequested = false;
 
   const formatPrice = (value) =>
     new Intl.NumberFormat("ru-RU").format(value) + " ₽";
@@ -42,6 +44,90 @@
     Object.entries(cart)
       .filter(([slug, quantity]) => bySlug[slug] && quantity > 0)
       .map(([slug, quantity]) => ({ ...bySlug[slug], quantity }));
+
+
+  function currentQuoteKey(form, items = getCartItems()) {
+    const cityCode = form?.querySelector("[data-cdek-city-code]")?.value || "";
+    const method = form?.querySelector("[data-delivery-method]")?.value || "";
+    const quantity = items.reduce((sum, item) => sum + item.quantity, 0);
+    return cityCode && method && quantity ? [cityCode, method, quantity].join(":") : "";
+  }
+
+  async function loadOrderQuote(form) {
+    const items = getCartItems();
+    const key = currentQuoteKey(form, items);
+    const status = form?.querySelector("[data-delivery-quote]");
+    if (!form || !key || !paymentAvailable) {
+      if (status && !key) status.textContent = "";
+      renderPaymentButton(form, items);
+      return;
+    }
+    if (form.dataset.quoteKey === key) {
+      renderPaymentButton(form, items);
+      return;
+    }
+
+    const quantity = items.reduce((sum, item) => sum + item.quantity, 0);
+    const goodsTotal = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
+    if (status) status.textContent = "Рассчитываем доставку СДЭК…";
+    form.dataset.quoteKey = "";
+
+    try {
+      const response = await fetch("/api/cdek/quote", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify({
+          cdekCityCode: form.querySelector("[data-cdek-city-code]")?.value || "",
+          deliveryMethod: form.querySelector("[data-delivery-method]")?.value || "",
+          quantity,
+        }),
+      });
+      const payload = await readApiJson(response);
+      if (!response.ok) throw new Error(payload.error || "Не удалось рассчитать доставку.");
+      form.dataset.quoteKey = key;
+      form.dataset.deliveryAmount = String(payload.amount);
+      const period = payload.period_min
+        ? ` · ориентировочно ${payload.period_min}–${payload.period_max || payload.period_min} дн.`
+        : "";
+      if (status) {
+        status.textContent = `Доставка: ${formatPrice(payload.amount)}${period} Итого: ${formatPrice(goodsTotal + payload.amount)}.`;
+      }
+    } catch (error) {
+      if (status) status.textContent = error.message || "Не удалось рассчитать доставку.";
+    }
+    renderPaymentButton(form, items);
+  }
+
+  function renderPaymentButton(form, items = getCartItems()) {
+    const button = form?.querySelector("[data-checkout-submit]");
+    if (!button) return;
+    const quoteReady = form.dataset.quoteKey === currentQuoteKey(form, items);
+    button.disabled = !paymentAvailable || !items.length || !quoteReady;
+    button.textContent = paymentAvailable ? "Оплатить через СБП" : "СБП подключается";
+  }
+
+  async function loadPaymentConfig(form) {
+    if (paymentConfigRequested) return;
+    paymentConfigRequested = true;
+    const lead = form?.querySelector("[data-checkout-lead]");
+    const note = form?.querySelector("[data-checkout-status]");
+    try {
+      const response = await fetch("/api/payment/config", {headers: {Accept: "application/json"}});
+      const payload = await readApiJson(response);
+      paymentAvailable = Boolean(response.ok && payload.available);
+      if (lead) lead.textContent = payload.message || "Статус оплаты временно недоступен.";
+      if (note) {
+        note.textContent = paymentAvailable
+          ? "Оплата проходит на защищённой странице ЮKassa. Данные банковской карты не передаются HELIONYX."
+          : "Заказ можно оформить через WhatsApp. Кнопку СБП включим после подключения онлайн-кассы.";
+      }
+    } catch {
+      paymentAvailable = false;
+      if (lead) lead.textContent = "Проверяем готовность оплаты через СБП.";
+    }
+    renderPaymentButton(form);
+    if (paymentAvailable) loadOrderQuote(form);
+  }
 
   function syncDeliveryFields(select) {
     const method = select || document.querySelector("[data-delivery-method]");
@@ -67,7 +153,7 @@
       [
         '<form class="checkout-form" data-checkout-form>',
         "<h3>Оформление и оплата</h3>",
-        '<p class="checkout-form__lead">Заполните данные покупателя. Защищённая оплата картой или через СБП станет доступна после активации магазина в ЮKassa.</p>',
+        '<p class="checkout-form__lead" data-checkout-lead>СБП подключено. Проверяем готовность онлайн-кассы.</p>',
         '<label class="checkout-field"><span>ФИО *</span><input name="customerName" type="text" autocomplete="name" minlength="5" maxlength="120" placeholder="Иванов Иван Иванович" required></label>',
         '<div class="checkout-form__grid">',
         '<label class="checkout-field"><span>Телефон *</span><input name="phone" type="tel" inputmode="tel" autocomplete="tel" maxlength="24" placeholder="+7 900 000-00-00" required></label>',
@@ -80,11 +166,11 @@
         '<label class="checkout-field"><span>Способ получения *</span><select name="deliveryMethod" data-delivery-method required><option value="cdek-pvz">СДЭК — до пункта выдачи</option><option value="cdek-courier">СДЭК — курьером до адреса</option></select></label>',
         '<div data-delivery-pvz><label class="checkout-field"><span>Пункт выдачи СДЭК *</span><input name="cdekPvz" data-cdek-pvz type="text" maxlength="180" placeholder="Сначала укажите город и загрузите ПВЗ" required></label><div class="checkout-pvz-actions"><button class="checkout-map-button" type="button" data-load-pvz>Показать ПВЗ СДЭК</button><a class="checkout-map-link" href="https://www.cdek.ru/ru/offices/" target="_blank" rel="noopener">Открыть карту ↗</a></div><p class="checkout-pvz-status" data-pvz-status role="status" aria-live="polite"></p><label class="checkout-field" data-pvz-select-wrap hidden><span>Выберите удобный пункт</span><select data-pvz-select><option value="">Выберите ПВЗ</option></select></label></div>',
         '<div data-delivery-courier hidden><label class="checkout-field"><span>Адрес доставки *</span><input name="deliveryAddress" type="text" autocomplete="street-address" maxlength="240" placeholder="Улица, дом, квартира"></label></div>',
-        '<p class="checkout-delivery__note">Стоимость и срок рассчитываются перед оплатой. Литий-ионные аккумуляторы отправляем СДЭК только наземным транспортом.</p>',
+        '<p class="checkout-delivery__note">Литий-ионные аккумуляторы отправляем СДЭК только наземным транспортом.</p><p class="checkout-delivery__note" data-delivery-quote aria-live="polite"></p>',
         "</div>",
         '<label class="checkout-checkbox"><input name="consent" type="checkbox" required><span>Согласен на обработку персональных данных и принимаю <a href="' + assetPrefix() + 'privacy/" target="_blank" rel="noopener">политику конфиденциальности</a>.</span></label>',
-        '<button class="button button--wide checkout-submit" type="button" disabled data-checkout-submit>Оплата подключается</button>',
-        '<p class="checkout-payment-note">Данные пока никуда не отправляются. После подключения оплата будет проходить на защищённой странице ЮKassa; HELIONYX не получает и не хранит данные банковской карты.</p>',
+        '<button class="button button--wide checkout-submit" type="submit" disabled data-checkout-submit>СБП подключается</button>',
+        '<p class="checkout-payment-note" data-checkout-status>До подключения онлайн-кассы заказ можно оформить через WhatsApp.</p>',
         "</form>",
       ].join("")
     );
@@ -92,6 +178,7 @@
     const note = document.querySelector(".cart-note");
     if (note) note.textContent = "Стоимость и срок доставки подтверждаем перед оплатой.";
     syncDeliveryFields();
+    loadPaymentConfig(document.querySelector("[data-checkout-form]"));
   }
 
   function renderCart() {
@@ -132,6 +219,9 @@
     empty.hidden = items.length > 0;
     totalNode.textContent = formatPrice(total);
     checkout.classList.toggle("is-disabled", items.length === 0);
+    const paymentForm = document.querySelector("[data-checkout-form]");
+    renderPaymentButton(paymentForm, items);
+    if (paymentAvailable) loadOrderQuote(paymentForm);
 
     const message = [
       "Здравствуйте! Хочу заказать аккумуляторы HELIONYX:",
@@ -169,7 +259,7 @@
   async function readApiJson(response) {
     const contentType = response.headers.get("content-type") || "";
     if (!contentType.includes("application/json")) {
-      throw new Error("Сервис СДЭК обновляется. Попробуйте ещё раз через минуту.");
+      throw new Error("Сервис временно недоступен. Попробуйте ещё раз через минуту.");
     }
     return response.json();
   }
@@ -296,6 +386,7 @@
       if (cityStatus) cityStatus.textContent = "Населённый пункт выбран.";
       closeCitySuggestions(form);
       if (loadButton) loadPickupPoints(loadButton, cityOption.dataset.cityCode || "");
+      loadOrderQuote(form);
       return;
     }
 
@@ -378,7 +469,14 @@
 
   document.addEventListener("change", (event) => {
     const deliveryMethod = event.target.closest("[data-delivery-method]");
-    if (deliveryMethod) syncDeliveryFields(deliveryMethod);
+    if (deliveryMethod) {
+      syncDeliveryFields(deliveryMethod);
+      const form = deliveryMethod.closest("[data-checkout-form]");
+      if (form) {
+        form.dataset.quoteKey = "";
+        loadOrderQuote(form);
+      }
+    }
 
     const pvzSelect = event.target.closest("[data-pvz-select]");
     if (pvzSelect) {
@@ -400,10 +498,62 @@
     const pvzStatus = form?.querySelector("[data-pvz-status]");
     if (cityCodeInput) cityCodeInput.value = "";
     if (pvzInput) pvzInput.value = "";
+    form.dataset.quoteKey = "";
+    form.dataset.deliveryAmount = "";
     if (selectWrap) selectWrap.hidden = true;
     if (pvzStatus) pvzStatus.textContent = "";
     scheduleCitySearch(cityInput);
   });
+
+
+
+  document.addEventListener("submit", async (event) => {
+    const form = event.target.closest("[data-checkout-form]");
+    if (!form) return;
+    event.preventDefault();
+
+    const status = form.querySelector("[data-checkout-status]");
+    const button = form.querySelector("[data-checkout-submit]");
+    const items = getCartItems();
+    if (!paymentAvailable) {
+      if (status) status.textContent = "Оплата через СБП пока закрыта до подключения онлайн-кассы.";
+      return;
+    }
+    if (!items.length || !form.reportValidity()) return;
+    if (!form.querySelector("[data-cdek-city-code]")?.value) {
+      if (status) status.textContent = "Выберите населённый пункт из подсказок СДЭК.";
+      form.querySelector("[data-delivery-city]")?.focus();
+      return;
+    }
+    if (form.dataset.quoteKey !== currentQuoteKey(form, items)) {
+      await loadOrderQuote(form);
+      if (form.dataset.quoteKey !== currentQuoteKey(form, items)) return;
+    }
+
+    const fields = new FormData(form);
+    const payload = Object.fromEntries(fields.entries());
+    payload.items = items.map((item) => ({slug: item.slug, quantity: item.quantity}));
+
+    button.disabled = true;
+    button.textContent = "Создаём заказ…";
+    if (status) status.textContent = "Подготавливаем безопасную оплату через СБП.";
+
+    try {
+      const response = await fetch("/api/orders", {
+        method: "POST",
+        headers: {"Content-Type": "application/json", Accept: "application/json"},
+        body: JSON.stringify(payload),
+      });
+      const result = await readApiJson(response);
+      if (!response.ok) throw new Error(result.error || "Не удалось создать заказ.");
+      if (!result.confirmation_url) throw new Error("ЮKassa не вернула ссылку на оплату.");
+      window.location.assign(result.confirmation_url);
+    } catch (error) {
+      if (status) status.textContent = error.message || "Не удалось перейти к оплате.";
+      renderPaymentButton(form, items);
+    }
+  });
+
 
   document.addEventListener("keydown", (event) => {
     if (event.key !== "Escape") return;
