@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Статус оплаты | HELIONYX</title>
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="theme-color" content="#0d5fff">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/assets/site.css">
+</head>
+<body>
+  <main class="section">
+    <div class="container">
+      <div class="hero-logo-card" style="max-width:680px;margin:5vh auto;padding:32px">
+        <div style="width:100%">
+          <span class="eyebrow">HELIONYX · безопасная оплата</span>
+          <h1 data-payment-title>Проверяем платёж</h1>
+          <p data-payment-message role="status" aria-live="polite">Получаем актуальный статус заказа в ЮKassa.</p>
+          <p><strong data-payment-order></strong></p>
+          <div class="hero-actions">
+            <a class="button" href="/">Вернуться на главную</a>
+            <a class="button button--outline" href="/contacts/">Связаться с нами</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+  <script>
+    (function () {
+      const params = new URLSearchParams(location.search);
+      const orderId = params.get("order") || "";
+      const title = document.querySelector("[data-payment-title]");
+      const message = document.querySelector("[data-payment-message]");
+      const order = document.querySelector("[data-payment-order]");
+      if (!/^HNX-[A-Z0-9-]+$/.test(orderId)) {
+        title.textContent = "Номер заказа не найден";
+        message.textContent = "Вернитесь в корзину или свяжитесь с нами.";
+        return;
+      }
+      order.textContent = "Заказ " + orderId;
+      let attempts = 0;
+
+      async function check() {
+        attempts += 1;
+        try {
+          const response = await fetch("/api/orders/" + encodeURIComponent(orderId) + "/status", {
+            headers: {Accept: "application/json"},
+          });
+          const payload = await response.json();
+          if (!response.ok) throw new Error(payload.error || "Не удалось проверить платёж.");
+          if (payload.status === "paid") {
+            localStorage.removeItem("helionyx-cart");
+            title.textContent = "Оплата прошла";
+            message.textContent = "Спасибо! Заказ принят. Электронный чек будет отправлен на указанный email.";
+            return;
+          }
+          if (payload.status === "canceled" || payload.status === "payment_error") {
+            title.textContent = "Платёж не завершён";
+            message.textContent = "Деньги не списаны. Можно вернуться в корзину и попробовать ещё раз.";
+            return;
+          }
+          title.textContent = "Ожидаем подтверждение";
+          message.textContent = "Банк ещё обрабатывает платёж. Эта страница обновится автоматически.";
+          if (attempts < 20) setTimeout(check, 3000);
+        } catch (error) {
+          title.textContent = "Проверяем платёж";
+          message.textContent = error.message || "Временная ошибка проверки.";
+          if (attempts < 10) setTimeout(check, 5000);
+        }
+      }
+      check();
+    })();
+  </script>
+</body>
+</html>
