@@ -1,8 +1,14 @@
 #!/usr/bin/env python3
+import base64
 import json
+import math
 import os
+import re
+import sqlite3
 import threading
 import time
+import uuid
+from datetime import datetime, timezone
 from collections import defaultdict, deque
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.error import HTTPError, URLError
@@ -14,6 +20,43 @@ CLIENT_ID = os.environ.get("CDEK_CLIENT_ID", "").strip()
 CLIENT_SECRET = os.environ.get("CDEK_CLIENT_SECRET", "").strip()
 HOST = os.environ.get("HELIONYX_API_HOST", "127.0.0.1")
 PORT = int(os.environ.get("HELIONYX_API_PORT", "8787"))
+PUBLIC_URL = os.environ.get("HELIONYX_PUBLIC_URL", "https://helionyx.store").rstrip("/")
+DB_PATH = os.environ.get("HELIONYX_DB_PATH", "").strip()
+
+YOOKASSA_API = "https://api.yookassa.ru/v3"
+YOOKASSA_SHOP_ID = os.environ.get("YOOKASSA_SHOP_ID", "").strip()
+YOOKASSA_SECRET_KEY = os.environ.get("YOOKASSA_SECRET_KEY", "").strip()
+YOOKASSA_PAYMENTS_ENABLED = os.environ.get("YOOKASSA_PAYMENTS_ENABLED", "0") == "1"
+YOOKASSA_RECEIPTS_ENABLED = os.environ.get("YOOKASSA_RECEIPTS_ENABLED", "0") == "1"
+YOOKASSA_VAT_CODE = int(os.environ.get("YOOKASSA_VAT_CODE", "1"))
+YOOKASSA_PAYMENT_MODE = os.environ.get("YOOKASSA_PAYMENT_MODE", "full_prepayment").strip()
+PAYMENTS_READY = bool(
+    YOOKASSA_SHOP_ID
+    and YOOKASSA_SECRET_KEY
+    and YOOKASSA_PAYMENTS_ENABLED
+    and YOOKASSA_RECEIPTS_ENABLED
+    and DB_PATH
+)
+
+PRODUCTS = {
+    "dyson-v7": ("Аккумулятор для Dyson V7 / SV11", 3190),
+    "dyson-v6": ("Аккумулятор для Dyson V6", 3090),
+    "dyson-v11": ("Аккумулятор для Dyson V11", 4990),
+    "dreame-5200": ("Аккумулятор для Dreame D9 / F9, 5200 мАч", 2590),
+    "samsung-jet90": ("Аккумулятор VCA-SBT90 для Samsung Jet 75 / 90", 4790),
+    "exvac-3200": ("Аккумулятор INR18650 M26-4S1P, 3200 мАч", 2090),
+    "mop2-lite": ("Аккумулятор для Xiaomi Vacuum-Mop 2 Lite", 2090),
+    "mop2-3200": ("Аккумулятор для Xiaomi Vacuum-Mop 2", 1990),
+    "xiaomi-g1": ("Аккумулятор для Xiaomi Vacuum-Mop Essential G1", 2090),
+    "samsung-jet60": ("Аккумулятор для Samsung Jet 60", 4490),
+    "lg-a9": ("Аккумулятор для LG CordZero A9", 3390),
+    "samsung-jet70": ("Аккумулятор VCA-SBT90E для Samsung Jet 70 / 90E", 4490),
+    "dreame-6400": ("Аккумулятор для Dreame D9 / F9, 6400 мАч", 2890),
+    "xiaomi-1c-5200": ("Аккумулятор для Xiaomi Vacuum-Mop 1C, 5200 мАч", 2790),
+    "roborock-6400": ("Аккумулятор для Roborock S5 / S6 / S7, 6400 мАч", 2990),
+    "xiaomi-mopp-3200": ("Аккумулятор для Xiaomi Vacuum-Mop P / 2S / S10 / S12", 2290),
+    "xiaomi-1c-6400": ("Аккумулятор для Xiaomi Vacuum-Mop 1C, 6400 мАч", 2990),
+}
 
 _token = {"value": "", "expires_at": 0.0}
 _token_lock = threading.Lock()
@@ -227,6 +270,348 @@ def pickup_points(city_name="", city_code=None):
     return {"city": city, "points": points}
 
 
+
+def cdek_post(path, payload):
+    request = Request(
+        CDEK_API + path,
+        data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+        method="POST",
+        headers={
+            "Authorization": "Bearer " + get_token(),
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+            "User-Agent": "HELIONYX/1.0",
+        },
+    )
+    try:
+        with urlopen(request, timeout=20) as response:
+            return json.load(response)
+    except HTTPError as error:
+        raise ApiError("СДЭК не смог рассчитать доставку") from error
+    except (URLError, TimeoutError, json.JSONDecodeError) as error:
+        raise ApiError("Не удалось получить расчёт доставки СДЭК") from error
+
+
+def delivery_quote(city_code, delivery_method, quantity):
+    try:
+        city_code = int(city_code)
+        quantity = int(quantity)
+    except (TypeError, ValueError) as error:
+        raise ApiError("Некорректные данные для расчёта доставки", 400) from error
+    if city_code <= 0 or quantity < 1 or quantity > 10:
+        raise ApiError("Некорректные данные для расчёта доставки", 400)
+    if delivery_method not in ("cdek-pvz", "cdek-courier"):
+        raise ApiError("Выберите способ доставки СДЭК", 400)
+
+    sender = resolve_city("Воронеж")
+    tariff_code = 138 if delivery_method == "cdek-pvz" else 136
+    result = cdek_post("/v2/calculator/tariff", {
+        "type": 1,
+        "tariff_code": tariff_code,
+        "from_location": {"code": sender["code"]},
+        "to_location": {"code": city_code},
+        "packages": [{
+            "weight": 600 * quantity,
+            "length": 25,
+            "width": 18,
+            "height": min(60, 12 * quantity),
+        }],
+    })
+    raw_sum = result.get("total_sum") or result.get("delivery_sum")
+    if raw_sum is None:
+        raise ApiError("СДЭК не вернул стоимость доставки")
+    amount = int(math.ceil(float(raw_sum)))
+    if amount <= 0 or amount > 50000:
+        raise ApiError("Получена некорректная стоимость доставки")
+    return {
+        "amount": amount,
+        "tariff_code": tariff_code,
+        "period_min": result.get("period_min"),
+        "period_max": result.get("period_max"),
+    }
+
+
+def normalize_phone(value):
+    digits = re.sub(r"\D", "", str(value or ""))
+    if len(digits) == 10:
+        digits = "7" + digits
+    if len(digits) == 11 and digits.startswith("8"):
+        digits = "7" + digits[1:]
+    if len(digits) < 11 or len(digits) > 15:
+        raise ApiError("Проверьте номер телефона", 400)
+    return digits
+
+
+def validate_email(value):
+    email = str(value or "").strip().lower()
+    if len(email) > 120 or not re.fullmatch(r"[^\s@]+@[^\s@]+\.[^\s@]+", email):
+        raise ApiError("Проверьте email для чека", 400)
+    return email
+
+
+def validate_text(value, name, minimum, maximum):
+    text = re.sub(r"\s+", " ", str(value or "")).strip()
+    if len(text) < minimum or len(text) > maximum:
+        raise ApiError("Проверьте поле «%s»" % name, 400)
+    return text
+
+
+def validate_order(payload):
+    raw_items = payload.get("items")
+    if not isinstance(raw_items, list) or not raw_items:
+        raise ApiError("Корзина пуста", 400)
+
+    items = []
+    total_quantity = 0
+    goods_total = 0
+    seen = set()
+    for raw in raw_items:
+        if not isinstance(raw, dict):
+            raise ApiError("Некорректный состав заказа", 400)
+        slug = str(raw.get("slug") or "")
+        if slug in seen or slug not in PRODUCTS:
+            raise ApiError("В корзине найден неизвестный товар", 400)
+        seen.add(slug)
+        try:
+            quantity = int(raw.get("quantity"))
+        except (TypeError, ValueError) as error:
+            raise ApiError("Некорректное количество товара", 400) from error
+        if quantity < 1 or quantity > 5:
+            raise ApiError("Можно заказать от 1 до 5 единиц одной модели", 400)
+        title, price = PRODUCTS[slug]
+        items.append({"slug": slug, "title": title, "price": price, "quantity": quantity})
+        total_quantity += quantity
+        goods_total += price * quantity
+
+    if total_quantity > 10 or goods_total > 200000:
+        raise ApiError("Для крупного заказа свяжитесь с нами", 400)
+
+    delivery_method = str(payload.get("deliveryMethod") or "")
+    city_code = str(payload.get("cdekCityCode") or "").strip()
+    city_name = validate_text(payload.get("deliveryCity"), "город", 2, 120)
+    delivery = {
+        "method": delivery_method,
+        "city_code": city_code,
+        "city": city_name,
+    }
+    if delivery_method == "cdek-pvz":
+        delivery["pvz"] = validate_text(payload.get("cdekPvz"), "ПВЗ", 3, 180)
+        delivery["address"] = ""
+    elif delivery_method == "cdek-courier":
+        delivery["address"] = validate_text(payload.get("deliveryAddress"), "адрес", 5, 240)
+        delivery["pvz"] = ""
+    else:
+        raise ApiError("Выберите способ доставки", 400)
+
+    customer = {
+        "name": validate_text(payload.get("customerName"), "ФИО", 5, 120),
+        "phone": normalize_phone(payload.get("phone")),
+        "email": validate_email(payload.get("email")),
+        "vacuum_model": re.sub(r"\s+", " ", str(payload.get("vacuumModel") or "")).strip()[:120],
+    }
+    quote = delivery_quote(city_code, delivery_method, total_quantity)
+    return {
+        "items": items,
+        "total_quantity": total_quantity,
+        "goods_total": goods_total,
+        "delivery": delivery,
+        "delivery_quote": quote,
+        "total": goods_total + quote["amount"],
+        "customer": customer,
+    }
+
+
+def db_connect():
+    if not DB_PATH:
+        raise ApiError("Хранилище заказов не настроено", 503)
+    directory = os.path.dirname(DB_PATH)
+    if directory:
+        os.makedirs(directory, mode=0o750, exist_ok=True)
+    connection = sqlite3.connect(DB_PATH, timeout=10)
+    connection.row_factory = sqlite3.Row
+    connection.execute("PRAGMA journal_mode=WAL")
+    connection.execute("""
+        CREATE TABLE IF NOT EXISTS orders (
+            id TEXT PRIMARY KEY,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            status TEXT NOT NULL,
+            payment_id TEXT,
+            amount INTEGER NOT NULL,
+            customer_name TEXT NOT NULL,
+            phone TEXT NOT NULL,
+            email TEXT NOT NULL,
+            details_json TEXT NOT NULL
+        )
+    """)
+    connection.commit()
+    try:
+        os.chmod(DB_PATH, 0o600)
+    except OSError:
+        pass
+    return connection
+
+
+def new_order_id():
+    return "HNX-" + datetime.now(timezone.utc).strftime("%Y%m%d") + "-" + uuid.uuid4().hex[:12].upper()
+
+
+def insert_order(order_id, order):
+    now = datetime.now(timezone.utc).isoformat()
+    with db_connect() as connection:
+        connection.execute(
+            """INSERT INTO orders
+               (id, created_at, updated_at, status, amount, customer_name, phone, email, details_json)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                order_id,
+                now,
+                now,
+                "creating_payment",
+                order["total"],
+                order["customer"]["name"],
+                order["customer"]["phone"],
+                order["customer"]["email"],
+                json.dumps(order, ensure_ascii=False, separators=(",", ":")),
+            ),
+        )
+        connection.commit()
+
+
+def update_order(order_id, status, payment_id=None):
+    now = datetime.now(timezone.utc).isoformat()
+    with db_connect() as connection:
+        connection.execute(
+            """UPDATE orders
+               SET status = ?, payment_id = COALESCE(?, payment_id), updated_at = ?
+               WHERE id = ?""",
+            (status, payment_id, now, order_id),
+        )
+        connection.commit()
+
+
+def get_order(order_id):
+    with db_connect() as connection:
+        return connection.execute(
+            "SELECT id, status, payment_id, amount, created_at FROM orders WHERE id = ?",
+            (order_id,),
+        ).fetchone()
+
+
+def yookassa_request(method, path, payload=None, idempotence_key=None):
+    credentials = base64.b64encode(
+        ("%s:%s" % (YOOKASSA_SHOP_ID, YOOKASSA_SECRET_KEY)).encode("utf-8")
+    ).decode("ascii")
+    headers = {
+        "Authorization": "Basic " + credentials,
+        "Accept": "application/json",
+        "Content-Type": "application/json",
+        "User-Agent": "HELIONYX/1.0",
+    }
+    if idempotence_key:
+        headers["Idempotence-Key"] = idempotence_key
+    request = Request(
+        YOOKASSA_API + path,
+        data=None if payload is None else json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+        method=method,
+        headers=headers,
+    )
+    try:
+        with urlopen(request, timeout=20) as response:
+            return json.load(response)
+    except HTTPError as error:
+        try:
+            details = json.load(error)
+            description = details.get("description") or details.get("code")
+        except Exception:
+            description = None
+        raise ApiError(
+            "ЮKassa отклонила запрос%s" % (": " + description if description else ""),
+            502,
+        ) from error
+    except (URLError, TimeoutError, json.JSONDecodeError) as error:
+        raise ApiError("Не удалось связаться с ЮKassa") from error
+
+
+def receipt_items(order):
+    items = []
+    for item in order["items"]:
+        items.append({
+            "description": item["title"][:128],
+            "quantity": float(item["quantity"]),
+            "amount": {"value": "%.2f" % item["price"], "currency": "RUB"},
+            "vat_code": YOOKASSA_VAT_CODE,
+            "payment_mode": YOOKASSA_PAYMENT_MODE,
+            "payment_subject": "commodity",
+            "measure": "piece",
+        })
+    items.append({
+        "description": "Доставка СДЭК",
+        "quantity": 1.0,
+        "amount": {"value": "%.2f" % order["delivery_quote"]["amount"], "currency": "RUB"},
+        "vat_code": YOOKASSA_VAT_CODE,
+        "payment_mode": YOOKASSA_PAYMENT_MODE,
+        "payment_subject": "service",
+    })
+    return items
+
+
+def create_yookassa_payment(order_id, order):
+    payload = {
+        "amount": {"value": "%.2f" % order["total"], "currency": "RUB"},
+        "capture": True,
+        "payment_method_data": {"type": "sbp"},
+        "confirmation": {
+            "type": "redirect",
+            "return_url": PUBLIC_URL + "/payment-result/?order=" + order_id,
+        },
+        "description": "Заказ HELIONYX " + order_id,
+        "metadata": {"order_id": order_id},
+        "receipt": {
+            "customer": {
+                "full_name": order["customer"]["name"],
+                "email": order["customer"]["email"],
+                "phone": order["customer"]["phone"],
+            },
+            "items": receipt_items(order),
+        },
+    }
+    payment = yookassa_request(
+        "POST",
+        "/payments",
+        payload,
+        idempotence_key=uuid.uuid4().hex,
+    )
+    confirmation_url = (payment.get("confirmation") or {}).get("confirmation_url")
+    payment_id = payment.get("id")
+    if not payment_id or not confirmation_url:
+        raise ApiError("ЮKassa не вернула ссылку на оплату")
+    return payment_id, confirmation_url
+
+
+def verify_payment(payment_id):
+    payment = yookassa_request("GET", "/payments/" + payment_id)
+    order_id = str((payment.get("metadata") or {}).get("order_id") or "")
+    if not order_id:
+        raise ApiError("В платеже отсутствует номер заказа")
+    order = get_order(order_id)
+    if not order or order["payment_id"] != payment_id:
+        raise ApiError("Платёж не связан с заказом", 400)
+    expected = "%.2f" % order["amount"]
+    actual = str((payment.get("amount") or {}).get("value") or "")
+    if actual != expected:
+        raise ApiError("Сумма платежа не совпадает с заказом", 400)
+    status = str(payment.get("status") or "")
+    if status == "succeeded" and payment.get("paid") is True:
+        update_order(order_id, "paid", payment_id)
+    elif status == "canceled":
+        update_order(order_id, "canceled", payment_id)
+    else:
+        update_order(order_id, "pending", payment_id)
+    return order_id, status
+
+
+
 def rate_limited(ip):
     now = time.time()
     with _requests_lock:
@@ -261,7 +646,44 @@ class Handler(BaseHTTPRequestHandler):
                 "ok": True,
                 "service": "helionyx-api",
                 "cdek_configured": bool(CLIENT_ID and CLIENT_SECRET),
+                "yookassa_configured": bool(YOOKASSA_SHOP_ID and YOOKASSA_SECRET_KEY),
+                "payments_enabled": PAYMENTS_READY,
             })
+            return
+
+        if parsed.path == "/api/payment/config":
+            self.send_json(200, {
+                "available": PAYMENTS_READY,
+                "method": "sbp",
+                "receipts_enabled": YOOKASSA_RECEIPTS_ENABLED,
+                "message": (
+                    "Оплата через СБП доступна."
+                    if PAYMENTS_READY
+                    else "СБП подключено. Запуск оплаты ожидает подключения онлайн-кассы."
+                ),
+            })
+            return
+
+        order_match = re.fullmatch(r"/api/orders/(HNX-[A-Z0-9-]+)/status", parsed.path)
+        if order_match:
+            try:
+                order = get_order(order_match.group(1))
+                if not order:
+                    self.send_json(404, {"error": "Заказ не найден"})
+                    return
+                if order["payment_id"] and order["status"] in ("creating_payment", "pending"):
+                    verify_payment(order["payment_id"])
+                    order = get_order(order["id"])
+                self.send_json(200, {
+                    "order_id": order["id"],
+                    "status": order["status"],
+                    "amount": order["amount"],
+                    "created_at": order["created_at"],
+                })
+            except ApiError as error:
+                self.send_json(error.status, {"error": str(error)})
+            except Exception:
+                self.send_json(500, {"error": "Не удалось проверить заказ"})
             return
 
         if parsed.path not in ("/api/cdek/cities", "/api/cdek/offices"):
@@ -297,8 +719,77 @@ class Handler(BaseHTTPRequestHandler):
         except Exception:
             self.send_json(500, {"error": "Внутренняя ошибка сервера."})
 
+    def read_json_body(self):
+        try:
+            length = int(self.headers.get("Content-Length", "0"))
+        except ValueError as error:
+            raise ApiError("Некорректный запрос", 400) from error
+        if length < 2 or length > 65536:
+            raise ApiError("Некорректный размер запроса", 400)
+        try:
+            payload = json.loads(self.rfile.read(length))
+        except (UnicodeDecodeError, json.JSONDecodeError) as error:
+            raise ApiError("Некорректный JSON", 400) from error
+        if not isinstance(payload, dict):
+            raise ApiError("Некорректный запрос", 400)
+        return payload
+
     def do_POST(self):
-        self.send_json(405, {"error": "Method not allowed"})
+        client_ip = self.headers.get("X-Real-IP") or self.client_address[0]
+        if rate_limited(client_ip):
+            self.send_json(429, {"error": "Слишком много запросов. Попробуйте через минуту."})
+            return
+
+        try:
+            if self.path == "/api/cdek/quote":
+                payload = self.read_json_body()
+                quote = delivery_quote(
+                    payload.get("cdekCityCode"),
+                    payload.get("deliveryMethod"),
+                    payload.get("quantity"),
+                )
+                self.send_json(200, quote)
+                return
+
+            if self.path == "/api/orders":
+                if not PAYMENTS_READY:
+                    raise ApiError(
+                        "СБП подключено, но оплата откроется после подключения онлайн-кассы.",
+                        503,
+                    )
+                payload = self.read_json_body()
+                order = validate_order(payload)
+                order_id = new_order_id()
+                insert_order(order_id, order)
+                try:
+                    payment_id, confirmation_url = create_yookassa_payment(order_id, order)
+                    update_order(order_id, "pending", payment_id)
+                except Exception:
+                    update_order(order_id, "payment_error")
+                    raise
+                self.send_json(201, {
+                    "order_id": order_id,
+                    "confirmation_url": confirmation_url,
+                })
+                return
+
+            if self.path == "/api/yookassa/webhook":
+                payload = self.read_json_body()
+                event = str(payload.get("event") or "")
+                payment_id = str((payload.get("object") or {}).get("id") or "")
+                if event not in ("payment.succeeded", "payment.canceled") or not payment_id:
+                    self.send_json(200, {"ok": True})
+                    return
+                order_id, status = verify_payment(payment_id)
+                self.send_json(200, {"ok": True, "order_id": order_id, "status": status})
+                return
+
+            self.send_json(404, {"error": "Not found"})
+        except ApiError as error:
+            self.send_json(error.status, {"error": str(error)})
+        except Exception as error:
+            print("POST error: %r" % error, flush=True)
+            self.send_json(500, {"error": "Внутренняя ошибка сервера."})
 
     def log_message(self, fmt, *args):
         print("%s - %s" % (self.address_string(), fmt % args), flush=True)
