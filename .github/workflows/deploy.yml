@@ -59,8 +59,8 @@ jobs:
           printf 'CDEK_CLIENT_ID=%s\nCDEK_CLIENT_SECRET=%s\nHELIONYX_API_HOST=127.0.0.1\nHELIONYX_API_PORT=8787\n' \
             "$CDEK_CLIENT_ID" "$CDEK_CLIENT_SECRET" > "$API_ENV"
 
-          ssh "$VPS_USER@$VPS_HOST" "rm -rf /tmp/helionyx-deploy && mkdir -p /tmp/helionyx-deploy/server /tmp/helionyx-deploy/deploy"
-          rsync -az --delete server/ "$VPS_USER@$VPS_HOST:/tmp/helionyx-deploy/server/"
+          ssh "$VPS_USER@$VPS_HOST" "mkdir -p /tmp/helionyx-deploy/server /tmp/helionyx-deploy/deploy && rm -rf /tmp/helionyx-deploy/deploy/*"
+          rsync -az server/app.py "$VPS_USER@$VPS_HOST:/tmp/helionyx-deploy/server/app.py"
           rsync -az --delete deploy/ "$VPS_USER@$VPS_HOST:/tmp/helionyx-deploy/deploy/"
           scp "$API_ENV" "$VPS_USER@$VPS_HOST:/tmp/helionyx-api.env"
           ssh "$VPS_USER@$VPS_HOST" "sudo -n /usr/local/sbin/helionyx-update-api"
