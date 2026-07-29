@@ -9,7 +9,7 @@ test -f "$SOURCE_ENV"
 test -f /etc/systemd/system/helionyx-api.service
 test -f /etc/nginx/snippets/helionyx-api.conf
 
-/usr/bin/python3 -m py_compile "$SOURCE_APP"
+/usr/bin/python3 -c 'import ast, pathlib, sys; ast.parse(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8"))' "$SOURCE_APP"
 /usr/bin/install -o root -g root -m 0644 "$SOURCE_APP" /opt/helionyx-api/app.py
 /usr/bin/install -o root -g root -m 0600 "$SOURCE_ENV" /etc/helionyx-api.env
 /bin/systemctl restart helionyx-api.service
