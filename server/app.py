@@ -604,6 +604,7 @@ def receipt_items(order, payment_mode=None):
         "vat_code": YOOKASSA_VAT_CODE,
         "payment_mode": payment_mode,
         "payment_subject": "service",
+        "measure": "piece",
     })
     return items
 
@@ -626,6 +627,8 @@ def create_yookassa_payment(order_id, order):
                 "phone": order["customer"]["phone"],
             },
             "items": receipt_items(order),
+            "internet": True,
+            "timezone": 2,
         },
     }
     payment = yookassa_request(
