@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Заказы HELIONYX</title>
+  <meta name="robots" content="noindex, nofollow, noarchive">
+  <meta name="theme-color" content="#0d5fff">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <style>
+    :root{color-scheme:light;font-family:Inter,system-ui,-apple-system,"Segoe UI",sans-serif;color:#12213a;background:#f4f7fb}
+    *{box-sizing:border-box}body{margin:0}.wrap{width:min(1080px,calc(100% - 32px));margin:40px auto}
+    .top,.login,.order{background:#fff;border:1px solid #dfe7f2;border-radius:18px;box-shadow:0 8px 30px rgba(24,55,95,.07)}
+    .top{padding:24px;margin-bottom:18px}.top h1{margin:0 0 6px}.top p{margin:0;color:#5e6d82}
+    .login{display:flex;gap:10px;padding:18px;margin-bottom:20px}.login input{flex:1;min-width:0;border:1px solid #c9d5e6;border-radius:10px;padding:12px;font:inherit}
+    button{border:0;border-radius:10px;padding:12px 18px;background:#0d5fff;color:#fff;font-weight:700;cursor:pointer}button:disabled{opacity:.55;cursor:wait}
+    .status{min-height:24px;margin:10px 2px;color:#5e6d82}.orders{display:grid;gap:14px}.order{padding:20px}
+    .order-head{display:flex;justify-content:space-between;gap:16px;align-items:flex-start}.order h2{margin:0;font-size:20px}.badge{border-radius:999px;padding:6px 10px;background:#edf3ff;color:#0d5fff;font-size:13px;font-weight:700;white-space:nowrap}
+    .badge--paid{background:#e9f8ef;color:#16733e}.badge--done{background:#e8f7ff;color:#086a99}.meta{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin:16px 0}.meta div{background:#f7f9fc;border-radius:10px;padding:10px}.meta span{display:block;color:#6b788b;font-size:12px;margin-bottom:3px}
+    .items{margin:0 0 14px;padding-left:20px}.delivery{color:#445269;margin:0 0 15px}.empty{padding:30px;text-align:center;color:#6b788b}
+    @media(max-width:700px){.wrap{margin:18px auto}.login{flex-direction:column}.meta{grid-template-columns:1fr}.order-head{flex-direction:column}}
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <section class="top">
+      <h1>Заказы HELIONYX</h1>
+      <p>Закрытая панель. Второй чек формируйте только после фактической выдачи товара покупателю.</p>
+    </section>
+    <section class="login">
+      <input type="password" autocomplete="current-password" data-token placeholder="Ключ администратора">
+      <button type="button" data-load>Показать заказы</button>
+    </section>
+    <p class="status" data-status role="status" aria-live="polite"></p>
+    <section class="orders" data-orders></section>
+  </main>
+  <script>
+    (function () {
+      const tokenInput = document.querySelector("[data-token]");
+      const loadButton = document.querySelector("[data-load]");
+      const statusNode = document.querySelector("[data-status]");
+      const ordersNode = document.querySelector("[data-orders]");
+      tokenInput.value = sessionStorage.getItem("helionyx-admin-token") || "";
+
+      const money = value => new Intl.NumberFormat("ru-RU").format(value) + " ₽";
+      const statuses = {
+        creating_payment: "Создание платежа", pending: "Ожидает оплаты", paid: "Оплачен",
+        canceled: "Отменён", payment_error: "Ошибка платежа", refunded: "Возвращён",
+        partially_refunded: "Частичный возврат", fulfilled: "Выдан, второй чек создан"
+      };
+
+      async function api(path, options) {
+        const token = tokenInput.value.trim();
+        if (!token) throw new Error("Введите ключ администратора.");
+        sessionStorage.setItem("helionyx-admin-token", token);
+        const response = await fetch(path, {
+          ...options,
+          headers: {Accept: "application/json", Authorization: "Bearer " + token, ...(options && options.headers)},
+        });
+        const type = response.headers.get("content-type") || "";
+        const payload = type.includes("application/json") ? await response.json() : {};
+        if (!response.ok) throw new Error(payload.error || "Сервер не выполнил запрос.");
+        return payload;
+      }
+
+      function addText(parent, tag, text, className) {
+        const node = document.createElement(tag);
+        if (className) node.className = className;
+        node.textContent = text || "—";
+        parent.appendChild(node);
+        return node;
+      }
+
+      function render(orders) {
+        ordersNode.replaceChildren();
+        if (!orders.length) {
+          addText(ordersNode, "div", "Заказов пока нет.", "empty");
+          return;
+        }
+        orders.forEach(order => {
+          const card = document.createElement("article");
+          card.className = "order";
+          const head = document.createElement("div");
+          head.className = "order-head";
+          addText(head, "h2", order.id);
+          const badge = addText(head, "span", statuses[order.status] || order.status, "badge");
+          if (order.status === "paid") badge.classList.add("badge--paid");
+          if (order.status === "fulfilled") badge.classList.add("badge--done");
+          card.appendChild(head);
+
+          const meta = document.createElement("div");
+          meta.className = "meta";
+          [["Покупатель", order.customer_name], ["Контакты", order.phone + " · " + order.email], ["Сумма", money(order.amount)]].forEach(pair => {
+            const box = document.createElement("div"); addText(box, "span", pair[0]); addText(box, "strong", pair[1]); meta.appendChild(box);
+          });
+          card.appendChild(meta);
+
+          const list = document.createElement("ul"); list.className = "items";
+          order.items.forEach(item => addText(list, "li", item.title + " — " + item.quantity + " шт."));
+          card.appendChild(list);
+          const delivery = order.delivery || {};
+          const destination = delivery.pvz || delivery.address || "";
+          addText(card, "p", "Доставка: " + (delivery.city || "—") + (destination ? ", " + destination : ""), "delivery");
+
+          if (order.status === "paid") {
+            const button = addText(card, "button", "Товар выдан — сформировать второй чек");
+            button.type = "button";
+            button.addEventListener("click", async () => {
+              if (!confirm("Покупатель действительно получил товар? После подтверждения ЮKassa сформирует чек зачёта предоплаты.")) return;
+              button.disabled = true;
+              statusNode.textContent = "Формируем второй чек для " + order.id + "…";
+              try {
+                await api("/api/admin/orders/" + encodeURIComponent(order.id) + "/fulfill", {method: "POST"});
+                statusNode.textContent = "Второй чек создан и отправлен покупателю.";
+                await loadOrders();
+              } catch (error) {
+                button.disabled = false;
+                statusNode.textContent = error.message;
+              }
+            });
+          }
+          ordersNode.appendChild(card);
+        });
+      }
+
+      async function loadOrders() {
+        loadButton.disabled = true;
+        statusNode.textContent = "Загружаем заказы…";
+        try {
+          const payload = await api("/api/admin/orders");
+          render(payload.orders || []);
+          statusNode.textContent = "Заказы обновлены.";
+        } catch (error) {
+          ordersNode.replaceChildren();
+          statusNode.textContent = error.message;
+        } finally {
+          loadButton.disabled = false;
+        }
+      }
+
+      loadButton.addEventListener("click", loadOrders);
+      tokenInput.addEventListener("keydown", event => { if (event.key === "Enter") loadOrders(); });
+    })();
+  </script>
+</body>
+</html>
