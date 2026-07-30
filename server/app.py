@@ -49,7 +49,7 @@ PRODUCTS = {
     "exvac-3200": ("Аккумулятор INR18650 M26-4S1P, 3200 мАч", 2090),
     "mop2-lite": ("Аккумулятор для Xiaomi Vacuum-Mop 2 Lite", 2090),
     "mop2-3200": ("Аккумулятор для Xiaomi Vacuum-Mop 2", 1990),
-    "xiaomi-g1": ("Аккумулятор для Xiaomi Vacuum-Mop Essential G1", 2090),
+    "xiaomi-g1": ("Аккумулятор для Xiaomi Vacuum-Mop Essential G1", 100),
     "samsung-jet60": ("Аккумулятор для Samsung Jet 60", 4490),
     "lg-a9": ("Аккумулятор для LG CordZero A9", 3390),
     "samsung-jet70": ("Аккумулятор VCA-SBT90E для Samsung Jet 70 / 90E", 4490),
