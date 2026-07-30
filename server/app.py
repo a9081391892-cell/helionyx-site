@@ -691,7 +691,7 @@ class Handler(BaseHTTPRequestHandler):
                 "message": (
                     "Оплата через СБП доступна."
                     if PAYMENTS_READY
-                    else "СБП подключено. Запуск оплаты ожидает подключения онлайн-кассы."
+                    else "СБП и чеки подключены. Завершаем техническую проверку оплаты."
                 ),
             })
             return
@@ -786,7 +786,7 @@ class Handler(BaseHTTPRequestHandler):
             if self.path == "/api/orders":
                 if not PAYMENTS_READY:
                     raise ApiError(
-                        "СБП подключено, но оплата откроется после подключения онлайн-кассы.",
+                        "СБП и чеки подключены. Оплата откроется после технической проверки.",
                         503,
                     )
                 payload = self.read_json_body()
