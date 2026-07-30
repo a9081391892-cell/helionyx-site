@@ -103,7 +103,7 @@
     if (!button) return;
     const quoteReady = form.dataset.quoteKey === currentQuoteKey(form, items);
     button.disabled = !paymentAvailable || !items.length || !quoteReady;
-    button.textContent = paymentAvailable ? "Оплатить через СБП" : "СБП подключается";
+    button.textContent = paymentAvailable ? "Оплатить через СБП" : "Оплата временно закрыта";
   }
 
   async function loadPaymentConfig(form) {
@@ -119,7 +119,7 @@
       if (note) {
         note.textContent = paymentAvailable
           ? "Оплата проходит на защищённой странице ЮKassa. Данные банковской карты не передаются HELIONYX."
-          : "Заказ можно оформить через WhatsApp. Кнопку СБП включим после подключения онлайн-кассы.";
+          : "Заказ можно оформить через WhatsApp. Кнопку СБП включим после контрольной проверки.";
       }
     } catch {
       paymentAvailable = false;
@@ -153,7 +153,7 @@
       [
         '<form class="checkout-form" data-checkout-form>',
         "<h3>Оформление и оплата</h3>",
-        '<p class="checkout-form__lead" data-checkout-lead>СБП подключено. Проверяем готовность онлайн-кассы.</p>',
+        '<p class="checkout-form__lead" data-checkout-lead>СБП и чеки подключены. Завершаем техническую проверку.</p>',
         '<label class="checkout-field"><span>ФИО *</span><input name="customerName" type="text" autocomplete="name" minlength="5" maxlength="120" placeholder="Иванов Иван Иванович" required></label>',
         '<div class="checkout-form__grid">',
         '<label class="checkout-field"><span>Телефон *</span><input name="phone" type="tel" inputmode="tel" autocomplete="tel" maxlength="24" placeholder="+7 900 000-00-00" required></label>',
@@ -169,8 +169,8 @@
         '<p class="checkout-delivery__note">Литий-ионные аккумуляторы отправляем СДЭК только наземным транспортом.</p><p class="checkout-delivery__note" data-delivery-quote aria-live="polite"></p>',
         "</div>",
         '<label class="checkout-checkbox"><input name="consent" type="checkbox" required><span>Согласен на обработку персональных данных и принимаю <a href="' + assetPrefix() + 'privacy/" target="_blank" rel="noopener">политику конфиденциальности</a>.</span></label>',
-        '<button class="button button--wide checkout-submit" type="submit" disabled data-checkout-submit>СБП подключается</button>',
-        '<p class="checkout-payment-note" data-checkout-status>До подключения онлайн-кассы заказ можно оформить через WhatsApp.</p>',
+        '<button class="button button--wide checkout-submit" type="submit" disabled data-checkout-submit>Оплата временно закрыта</button>',
+        '<p class="checkout-payment-note" data-checkout-status>До завершения контрольной проверки заказ можно оформить через WhatsApp.</p>',
         "</form>",
       ].join("")
     );
@@ -516,7 +516,7 @@
     const button = form.querySelector("[data-checkout-submit]");
     const items = getCartItems();
     if (!paymentAvailable) {
-      if (status) status.textContent = "Оплата через СБП пока закрыта до подключения онлайн-кассы.";
+      if (status) status.textContent = "Оплата через СБП пока закрыта до завершения контрольной проверки.";
       return;
     }
     if (!items.length || !form.reportValidity()) return;
