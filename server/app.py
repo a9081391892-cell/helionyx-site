@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import base64
+import hmac
 import json
 import math
 import os
@@ -22,6 +23,7 @@ HOST = os.environ.get("HELIONYX_API_HOST", "127.0.0.1")
 PORT = int(os.environ.get("HELIONYX_API_PORT", "8787"))
 PUBLIC_URL = os.environ.get("HELIONYX_PUBLIC_URL", "https://helionyx.store").rstrip("/")
 DB_PATH = os.environ.get("HELIONYX_DB_PATH", "").strip()
+ADMIN_TOKEN = os.environ.get("HELIONYX_ADMIN_TOKEN", "").strip()
 
 YOOKASSA_API = "https://api.yookassa.ru/v3"
 YOOKASSA_SHOP_ID = os.environ.get("YOOKASSA_SHOP_ID", "").strip()
@@ -441,9 +443,18 @@ def db_connect():
             customer_name TEXT NOT NULL,
             phone TEXT NOT NULL,
             email TEXT NOT NULL,
-            details_json TEXT NOT NULL
+            details_json TEXT NOT NULL,
+            settlement_receipt_id TEXT,
+            fulfilled_at TEXT
         )
     """)
+    columns = {
+        row["name"] for row in connection.execute("PRAGMA table_info(orders)").fetchall()
+    }
+    if "settlement_receipt_id" not in columns:
+        connection.execute("ALTER TABLE orders ADD COLUMN settlement_receipt_id TEXT")
+    if "fulfilled_at" not in columns:
+        connection.execute("ALTER TABLE orders ADD COLUMN fulfilled_at TEXT")
     connection.commit()
     try:
         os.chmod(DB_PATH, 0o600)
@@ -506,6 +517,38 @@ def get_order_by_payment_id(payment_id):
         ).fetchone()
 
 
+def get_order_details(order_id):
+    with db_connect() as connection:
+        return connection.execute(
+            """SELECT id, status, payment_id, amount, customer_name, phone, email,
+                      details_json, created_at, settlement_receipt_id, fulfilled_at
+               FROM orders WHERE id = ?""",
+            (order_id,),
+        ).fetchone()
+
+
+def list_recent_orders(limit=100):
+    with db_connect() as connection:
+        return connection.execute(
+            """SELECT id, status, payment_id, amount, customer_name, phone, email,
+                      details_json, created_at, settlement_receipt_id, fulfilled_at
+               FROM orders ORDER BY created_at DESC LIMIT ?""",
+            (limit,),
+        ).fetchall()
+
+
+def mark_order_fulfilled(order_id, receipt_id):
+    now = datetime.now(timezone.utc).isoformat()
+    with db_connect() as connection:
+        connection.execute(
+            """UPDATE orders
+               SET status = ?, settlement_receipt_id = ?, fulfilled_at = ?, updated_at = ?
+               WHERE id = ?""",
+            ("fulfilled", receipt_id, now, now, order_id),
+        )
+        connection.commit()
+
+
 def yookassa_request(method, path, payload=None, idempotence_key=None):
     credentials = base64.b64encode(
         ("%s:%s" % (YOOKASSA_SHOP_ID, YOOKASSA_SECRET_KEY)).encode("utf-8")
@@ -541,15 +584,16 @@ def yookassa_request(method, path, payload=None, idempotence_key=None):
         raise ApiError("Не удалось связаться с ЮKassa") from error
 
 
-def receipt_items(order):
+def receipt_items(order, payment_mode=None):
     items = []
+    payment_mode = payment_mode or YOOKASSA_PAYMENT_MODE
     for item in order["items"]:
         items.append({
             "description": item["title"][:128],
             "quantity": float(item["quantity"]),
             "amount": {"value": "%.2f" % item["price"], "currency": "RUB"},
             "vat_code": YOOKASSA_VAT_CODE,
-            "payment_mode": YOOKASSA_PAYMENT_MODE,
+            "payment_mode": payment_mode,
             "payment_subject": "commodity",
             "measure": "piece",
         })
@@ -558,7 +602,7 @@ def receipt_items(order):
         "quantity": 1.0,
         "amount": {"value": "%.2f" % order["delivery_quote"]["amount"], "currency": "RUB"},
         "vat_code": YOOKASSA_VAT_CODE,
-        "payment_mode": YOOKASSA_PAYMENT_MODE,
+        "payment_mode": payment_mode,
         "payment_subject": "service",
     })
     return items
@@ -595,6 +639,49 @@ def create_yookassa_payment(order_id, order):
     if not payment_id or not confirmation_url:
         raise ApiError("ЮKassa не вернула ссылку на оплату")
     return payment_id, confirmation_url
+
+
+def create_settlement_receipt(order):
+    if not order["payment_id"]:
+        raise ApiError("У заказа отсутствует идентификатор платежа", 400)
+    if order["settlement_receipt_id"]:
+        return order["settlement_receipt_id"], "succeeded"
+    if order["status"] != "paid":
+        raise ApiError("Второй чек можно сформировать только для оплаченного заказа", 409)
+
+    details = json.loads(order["details_json"])
+    payload = {
+        "customer": {
+            "full_name": order["customer_name"],
+            "email": order["email"],
+            "phone": order["phone"],
+        },
+        "payment_id": order["payment_id"],
+        "type": "payment",
+        "send": True,
+        "items": receipt_items(details, "full_payment"),
+        "internet": True,
+        "timezone": 2,
+        "settlements": [{
+            "type": "prepayment",
+            "amount": {"value": "%.2f" % order["amount"], "currency": "RUB"},
+        }],
+    }
+    receipt = yookassa_request(
+        "POST",
+        "/receipts",
+        payload,
+        idempotence_key=uuid.uuid5(
+            uuid.NAMESPACE_URL,
+            "https://helionyx.store/receipts/settlement/" + order["id"],
+        ).hex,
+    )
+    receipt_id = str(receipt.get("id") or "")
+    status = str(receipt.get("status") or "")
+    if not receipt_id:
+        raise ApiError("ЮKassa не вернула номер второго чека")
+    mark_order_fulfilled(order["id"], receipt_id)
+    return receipt_id, status
 
 
 def verify_payment(payment_id):
@@ -642,6 +729,14 @@ def verify_refund(refund_id):
         order_status = "refunded" if refund_amount == order["amount"] else "partially_refunded"
         update_order(order["id"], order_status, payment_id)
     return order["id"], status
+
+
+def admin_authorized(handler):
+    if len(ADMIN_TOKEN) < 32:
+        return False
+    authorization = handler.headers.get("Authorization") or ""
+    expected = "Bearer " + ADMIN_TOKEN
+    return hmac.compare_digest(authorization, expected)
 
 
 def rate_limited(ip):
@@ -694,6 +789,41 @@ class Handler(BaseHTTPRequestHandler):
                     else "СБП и чеки подключены. Завершаем техническую проверку оплаты."
                 ),
             })
+            return
+
+        if parsed.path == "/api/admin/orders":
+            if not admin_authorized(self):
+                self.send_json(401, {"error": "Требуется ключ администратора"})
+                return
+            orders = []
+            for row in list_recent_orders():
+                details = json.loads(row["details_json"])
+                delivery = details.get("delivery") or {}
+                orders.append({
+                    "id": row["id"],
+                    "status": row["status"],
+                    "amount": row["amount"],
+                    "customer_name": row["customer_name"],
+                    "phone": row["phone"],
+                    "email": row["email"],
+                    "created_at": row["created_at"],
+                    "fulfilled_at": row["fulfilled_at"],
+                    "settlement_receipt_id": row["settlement_receipt_id"],
+                    "items": [
+                        {
+                            "title": item.get("title"),
+                            "quantity": item.get("quantity"),
+                        }
+                        for item in details.get("items", [])
+                    ],
+                    "delivery": {
+                        "method": delivery.get("method"),
+                        "city": delivery.get("city"),
+                        "pvz": delivery.get("pvz"),
+                        "address": delivery.get("address"),
+                    },
+                })
+            self.send_json(200, {"orders": orders})
             return
 
         order_match = re.fullmatch(r"/api/orders/(HNX-[A-Z0-9-]+)/status", parsed.path)
@@ -802,6 +932,28 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(201, {
                     "order_id": order_id,
                     "confirmation_url": confirmation_url,
+                })
+                return
+
+            fulfill_match = re.fullmatch(
+                r"/api/admin/orders/(HNX-[A-Z0-9-]+)/fulfill",
+                self.path,
+            )
+            if fulfill_match:
+                if not admin_authorized(self):
+                    self.send_json(401, {"error": "Требуется ключ администратора"})
+                    return
+                order = get_order_details(fulfill_match.group(1))
+                if not order:
+                    self.send_json(404, {"error": "Заказ не найден"})
+                    return
+                receipt_id, receipt_status = create_settlement_receipt(order)
+                self.send_json(200, {
+                    "ok": True,
+                    "order_id": order["id"],
+                    "status": "fulfilled",
+                    "receipt_id": receipt_id,
+                    "receipt_status": receipt_status,
                 })
                 return
 
