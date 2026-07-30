@@ -18,7 +18,7 @@
     .status{min-height:24px;margin:10px 2px;color:#5e6d82}.orders{display:grid;gap:14px}.order{padding:20px}
     .order-head{display:flex;justify-content:space-between;gap:16px;align-items:flex-start}.order h2{margin:0;font-size:20px}.badge{border-radius:999px;padding:6px 10px;background:#edf3ff;color:#0d5fff;font-size:13px;font-weight:700;white-space:nowrap}
     .badge--paid{background:#e9f8ef;color:#16733e}.badge--done{background:#e8f7ff;color:#086a99}.meta{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin:16px 0}.meta div{background:#f7f9fc;border-radius:10px;padding:10px}.meta span{display:block;color:#6b788b;font-size:12px;margin-bottom:3px}
-    .items{margin:0 0 14px;padding-left:20px}.delivery{color:#445269;margin:0 0 15px}.empty{padding:30px;text-align:center;color:#6b788b}
+    .items{margin:0 0 14px;padding-left:20px}.delivery{color:#445269;margin:0 0 10px}.cdek{margin:0 0 15px;padding:10px 12px;border-radius:10px;background:#edf3ff;color:#234a87;font-size:13px}.cdek--ok{background:#e9f8ef;color:#16733e}.cdek--error{background:#fff0f0;color:#a32626}.empty{padding:30px;text-align:center;color:#6b788b}
     @media(max-width:700px){.wrap{margin:18px auto}.login{flex-direction:column}.meta{grid-template-columns:1fr}.order-head{flex-direction:column}}
   </style>
 </head>
@@ -102,6 +102,37 @@
           const delivery = order.delivery || {};
           const destination = delivery.pvz || delivery.address || "";
           addText(card, "p", "Доставка: " + (delivery.city || "—") + (destination ? ", " + destination : ""), "delivery");
+
+          const cdek = order.cdek || {};
+          let cdekText = "СДЭК: накладная ещё не создана.";
+          let cdekClass = "cdek";
+          if (cdek.uuid) {
+            cdekText = "СДЭК: накладная " + (cdek.number || cdek.uuid) + " · статус " + (cdek.status || "создана");
+            cdekClass += " cdek--ok";
+          } else if (cdek.error) {
+            cdekText = "СДЭК: " + cdek.error;
+            cdekClass += " cdek--error";
+          } else if (cdek.status === "creating") {
+            cdekText = "СДЭК: создаём накладную…";
+          }
+          addText(card, "p", cdekText, cdekClass);
+
+          if (order.status === "paid" && !cdek.uuid) {
+            const cdekButton = addText(card, "button", cdek.error ? "Повторить создание накладной СДЭК" : "Создать накладную СДЭК");
+            cdekButton.type = "button";
+            cdekButton.addEventListener("click", async () => {
+              cdekButton.disabled = true;
+              statusNode.textContent = "Создаём накладную СДЭК для " + order.id + "…";
+              try {
+                await api("/api/admin/orders/" + encodeURIComponent(order.id) + "/cdek", {method: "POST"});
+                statusNode.textContent = "Накладная СДЭК создана.";
+                await loadOrders();
+              } catch (error) {
+                cdekButton.disabled = false;
+                statusNode.textContent = error.message;
+              }
+            });
+          }
 
           if (order.status === "paid") {
             const button = addText(card, "button", "Товар выдан — сформировать второй чек");
