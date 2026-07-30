@@ -398,6 +398,37 @@ button { cursor: pointer; }
 .checkout-delivery__note { margin: 12px 0 0; color: var(--muted); font-size: 11px; }
 [data-delivery-pvz][hidden], [data-delivery-courier][hidden] { display: none; }
 
+/* Order total before YooKassa */
+.checkout-summary {
+  margin-top: 16px;
+  padding: 15px 16px;
+  border: 2px solid var(--blue);
+  border-radius: 14px;
+  background: white;
+  box-shadow: 0 10px 28px rgba(13,95,255,.12);
+}
+.checkout-summary[hidden] { display: none; }
+.checkout-summary__row {
+  display: flex;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 7px 0;
+  color: #30415d;
+  font-size: 14px;
+}
+.checkout-summary__row strong { color: var(--ink); white-space: nowrap; }
+.checkout-summary__total {
+  align-items: center;
+  margin-top: 6px;
+  padding-top: 13px;
+  border-top: 1px solid var(--line);
+  color: var(--ink);
+  font-size: 16px;
+  font-weight: 900;
+}
+.checkout-summary__total strong { color: var(--blue); font-size: 24px; line-height: 1; }
+.checkout-summary__note { margin: 10px 0 0; color: var(--muted); font-size: 11px; line-height: 1.45; }
+
 /* CDEK pickup selector */
 .checkout-pvz-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; margin-top: 9px; }
 .checkout-map-button { min-height: 38px; padding: 0 13px; border: 1px solid var(--blue); border-radius: 9px; background: white; color: var(--blue); font-size: 12px; font-weight: 850; }
