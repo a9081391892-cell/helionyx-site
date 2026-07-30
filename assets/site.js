@@ -88,7 +88,6 @@
       return;
     }
 
-    const quantity = items.reduce((sum, item) => sum + item.quantity, 0);
     if (status) status.textContent = "Рассчитываем доставку СДЭК…";
     form.dataset.quoteKey = "";
     form.dataset.deliveryAmount = "";
@@ -101,7 +100,7 @@
         body: JSON.stringify({
           cdekCityCode: form.querySelector("[data-cdek-city-code]")?.value || "",
           deliveryMethod: form.querySelector("[data-delivery-method]")?.value || "",
-          quantity,
+          items: items.map((item) => ({ slug: item.slug, quantity: item.quantity })),
         }),
       });
       const payload = await readApiJson(response);
