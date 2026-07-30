@@ -24,6 +24,17 @@ PORT = int(os.environ.get("HELIONYX_API_PORT", "8787"))
 PUBLIC_URL = os.environ.get("HELIONYX_PUBLIC_URL", "https://helionyx.store").rstrip("/")
 DB_PATH = os.environ.get("HELIONYX_DB_PATH", "").strip()
 ADMIN_TOKEN = os.environ.get("HELIONYX_ADMIN_TOKEN", "").strip()
+CDEK_SENDER_NAME = os.environ.get("CDEK_SENDER_NAME", "HELIONYX").strip() or "HELIONYX"
+CDEK_SENDER_PHONE = re.sub(r"\D", "", os.environ.get("CDEK_SENDER_PHONE", ""))
+CDEK_SHIPMENT_POINT = os.environ.get("CDEK_SHIPMENT_POINT", "VRN5").strip()
+CDEK_AUTO_CREATE_ENABLED = os.environ.get("CDEK_AUTO_CREATE_ENABLED", "0") == "1"
+CDEK_ORDERS_READY = bool(
+    CLIENT_ID
+    and CLIENT_SECRET
+    and DB_PATH
+    and len(CDEK_SENDER_PHONE) >= 11
+    and CDEK_SHIPMENT_POINT
+)
 
 YOOKASSA_API = "https://api.yookassa.ru/v3"
 YOOKASSA_SHOP_ID = os.environ.get("YOOKASSA_SHOP_ID", "").strip()
@@ -82,6 +93,7 @@ SHIPPING_PROFILES = {
 
 _token = {"value": "", "expires_at": 0.0}
 _token_lock = threading.Lock()
+_cdek_order_lock = threading.Lock()
 _cache = {}
 _cache_lock = threading.Lock()
 _requests = defaultdict(deque)
@@ -314,6 +326,40 @@ def cdek_post(path, payload):
         raise ApiError("Не удалось получить расчёт доставки СДЭК") from error
 
 
+def cdek_order_request(method, path, payload=None):
+    request = Request(
+        CDEK_API + path,
+        data=None if payload is None else json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+        method=method,
+        headers={
+            "Authorization": "Bearer " + get_token(),
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+            "User-Agent": "HELIONYX/1.0",
+        },
+    )
+    try:
+        with urlopen(request, timeout=25) as response:
+            return json.load(response)
+    except HTTPError as error:
+        description = ""
+        try:
+            details = json.loads(error.read().decode("utf-8"))
+            messages = []
+            for request_item in details.get("requests", []):
+                for issue in request_item.get("errors", []):
+                    if issue.get("message"):
+                        messages.append(str(issue["message"]))
+            if not messages and details.get("message"):
+                messages.append(str(details["message"]))
+            description = ": " + "; ".join(messages[:3]) if messages else ""
+        except Exception:
+            description = ""
+        raise ApiError("СДЭК отклонил создание накладной" + description, 502) from error
+    except (URLError, TimeoutError, json.JSONDecodeError) as error:
+        raise ApiError("Не удалось связаться со СДЭК для создания накладной", 502) from error
+
+
 def build_shipping_package(items):
     if not isinstance(items, list) or not items:
         raise ApiError("Корзина пуста", 400)
@@ -454,10 +500,15 @@ def validate_order(payload):
     }
     if delivery_method == "cdek-pvz":
         delivery["pvz"] = validate_text(payload.get("cdekPvz"), "ПВЗ", 3, 180)
+        pvz_match = re.match(r"^([A-Z0-9-]+)\s+[—-]\s+", delivery["pvz"], re.IGNORECASE)
+        if not pvz_match:
+            raise ApiError("Выберите пункт выдачи из списка СДЭК", 400)
+        delivery["pvz_code"] = pvz_match.group(1).upper()
         delivery["address"] = ""
     elif delivery_method == "cdek-courier":
         delivery["address"] = validate_text(payload.get("deliveryAddress"), "адрес", 5, 240)
         delivery["pvz"] = ""
+        delivery["pvz_code"] = ""
     else:
         raise ApiError("Выберите способ доставки", 400)
 
@@ -501,7 +552,12 @@ def db_connect():
             email TEXT NOT NULL,
             details_json TEXT NOT NULL,
             settlement_receipt_id TEXT,
-            fulfilled_at TEXT
+            fulfilled_at TEXT,
+            cdek_uuid TEXT,
+            cdek_number TEXT,
+            cdek_status TEXT,
+            cdek_error TEXT,
+            cdek_created_at TEXT
         )
     """)
     columns = {
@@ -511,6 +567,9 @@ def db_connect():
         connection.execute("ALTER TABLE orders ADD COLUMN settlement_receipt_id TEXT")
     if "fulfilled_at" not in columns:
         connection.execute("ALTER TABLE orders ADD COLUMN fulfilled_at TEXT")
+    for column_name in ("cdek_uuid", "cdek_number", "cdek_status", "cdek_error", "cdek_created_at"):
+        if column_name not in columns:
+            connection.execute("ALTER TABLE orders ADD COLUMN %s TEXT" % column_name)
     connection.commit()
     try:
         os.chmod(DB_PATH, 0o600)
@@ -577,7 +636,8 @@ def get_order_details(order_id):
     with db_connect() as connection:
         return connection.execute(
             """SELECT id, status, payment_id, amount, customer_name, phone, email,
-                      details_json, created_at, settlement_receipt_id, fulfilled_at
+                      details_json, created_at, settlement_receipt_id, fulfilled_at,
+                      cdek_uuid, cdek_number, cdek_status, cdek_error, cdek_created_at
                FROM orders WHERE id = ?""",
             (order_id,),
         ).fetchone()
@@ -587,7 +647,8 @@ def list_recent_orders(limit=100):
     with db_connect() as connection:
         return connection.execute(
             """SELECT id, status, payment_id, amount, customer_name, phone, email,
-                      details_json, created_at, settlement_receipt_id, fulfilled_at
+                      details_json, created_at, settlement_receipt_id, fulfilled_at,
+                      cdek_uuid, cdek_number, cdek_status, cdek_error, cdek_created_at
                FROM orders ORDER BY created_at DESC LIMIT ?""",
             (limit,),
         ).fetchall()
@@ -603,6 +664,143 @@ def mark_order_fulfilled(order_id, receipt_id):
             ("fulfilled", receipt_id, now, now, order_id),
         )
         connection.commit()
+
+
+def save_cdek_state(order_id, status, cdek_uuid=None, cdek_number=None, error_message=None):
+    now = datetime.now(timezone.utc).isoformat()
+    with db_connect() as connection:
+        connection.execute(
+            """UPDATE orders
+               SET cdek_status = ?,
+                   cdek_uuid = COALESCE(?, cdek_uuid),
+                   cdek_number = COALESCE(?, cdek_number),
+                   cdek_error = ?,
+                   cdek_created_at = CASE
+                       WHEN ? IS NOT NULL THEN COALESCE(cdek_created_at, ?)
+                       ELSE cdek_created_at
+                   END,
+                   updated_at = ?
+               WHERE id = ?""",
+            (
+                status,
+                cdek_uuid,
+                cdek_number,
+                error_message,
+                cdek_uuid,
+                now,
+                now,
+                order_id,
+            ),
+        )
+        connection.commit()
+
+
+def cdek_result(row):
+    return {
+        "uuid": row["cdek_uuid"],
+        "number": row["cdek_number"],
+        "status": row["cdek_status"],
+        "error": row["cdek_error"],
+        "created_at": row["cdek_created_at"],
+    }
+
+
+def create_cdek_shipment(order_id):
+    if not CDEK_ORDERS_READY:
+        raise ApiError("Создание накладных СДЭК ещё не настроено", 503)
+
+    with _cdek_order_lock:
+        row = get_order_details(order_id)
+        if not row:
+            raise ApiError("Заказ не найден", 404)
+        if row["cdek_uuid"]:
+            return cdek_result(row)
+        if row["status"] not in ("paid", "fulfilled"):
+            raise ApiError("Накладную можно создать только для оплаченного заказа", 409)
+
+        details = json.loads(row["details_json"])
+        delivery = details.get("delivery") or {}
+        package = build_shipping_package(details.get("items") or [])
+        cdek_items = []
+        for item in details.get("items") or []:
+            profile = SHIPPING_PROFILES[item["slug"]]
+            cdek_items.append({
+                "name": item["title"][:255],
+                "ware_key": profile["sku"],
+                "payment": {"value": 0},
+                "cost": item["price"],
+                "weight": profile["weight"],
+                "amount": item["quantity"],
+            })
+
+        payload = {
+            "type": 1,
+            "number": order_id,
+            "tariff_code": details["delivery_quote"]["tariff_code"],
+            "shipment_point": CDEK_SHIPMENT_POINT,
+            "comment": "Литий-ионный аккумулятор. UN38.3. Только наземная перевозка.",
+            "sender": {
+                "company": CDEK_SENDER_NAME,
+                "name": CDEK_SENDER_NAME,
+                "phones": [{"number": "+" + CDEK_SENDER_PHONE}],
+            },
+            "recipient": {
+                "name": row["customer_name"],
+                "email": row["email"],
+                "phones": [{"number": "+" + row["phone"]}],
+            },
+            "packages": [{
+                "number": "1",
+                "weight": package["weight"],
+                "length": package["length"],
+                "width": package["width"],
+                "height": package["height"],
+                "comment": "Аккумуляторы HELIONYX",
+                "items": cdek_items,
+            }],
+        }
+        if delivery.get("method") == "cdek-pvz":
+            if not delivery.get("pvz_code"):
+                raise ApiError("В заказе отсутствует код пункта выдачи СДЭК", 400)
+            payload["delivery_point"] = delivery["pvz_code"]
+        else:
+            payload["to_location"] = {
+                "code": int(delivery["city_code"]),
+                "address": delivery["address"],
+            }
+
+        save_cdek_state(order_id, "creating")
+        try:
+            response = cdek_order_request("POST", "/v2/orders", payload)
+            entity = response.get("entity") or {}
+            cdek_uuid = str(entity.get("uuid") or "")
+            cdek_number = str(entity.get("cdek_number") or "")
+            request_state = ""
+            requests = response.get("requests") or []
+            if requests:
+                request_state = str(requests[0].get("state") or "")
+            if not cdek_uuid:
+                raise ApiError("СДЭК не вернул идентификатор накладной")
+            save_cdek_state(
+                order_id,
+                request_state.lower() or "accepted",
+                cdek_uuid,
+                cdek_number or None,
+            )
+        except Exception as error:
+            save_cdek_state(order_id, "error", error_message=str(error)[:500])
+            raise
+
+        return cdek_result(get_order_details(order_id))
+
+
+def create_cdek_shipment_safely(order_id):
+    if not CDEK_AUTO_CREATE_ENABLED or not CDEK_ORDERS_READY:
+        return
+    try:
+        create_cdek_shipment(order_id)
+    except Exception as error:
+        print("CDEK order error for %s: %r" % (order_id, error), flush=True)
 
 
 def yookassa_request(method, path, payload=None, idempotence_key=None):
@@ -758,6 +956,7 @@ def verify_payment(payment_id):
     status = str(payment.get("status") or "")
     if status == "succeeded" and payment.get("paid") is True:
         update_order(order_id, "paid", payment_id)
+        create_cdek_shipment_safely(order_id)
     elif status == "canceled":
         update_order(order_id, "canceled", payment_id)
     else:
@@ -832,6 +1031,7 @@ class Handler(BaseHTTPRequestHandler):
                 "ok": True,
                 "service": "helionyx-api",
                 "cdek_configured": bool(CLIENT_ID and CLIENT_SECRET),
+                "cdek_orders_enabled": bool(CDEK_AUTO_CREATE_ENABLED and CDEK_ORDERS_READY),
                 "yookassa_configured": bool(YOOKASSA_SHOP_ID and YOOKASSA_SECRET_KEY),
                 "payments_enabled": PAYMENTS_READY,
             })
@@ -868,6 +1068,7 @@ class Handler(BaseHTTPRequestHandler):
                     "created_at": row["created_at"],
                     "fulfilled_at": row["fulfilled_at"],
                     "settlement_receipt_id": row["settlement_receipt_id"],
+                    "cdek": cdek_result(row),
                     "items": [
                         {
                             "title": item.get("title"),
@@ -879,6 +1080,7 @@ class Handler(BaseHTTPRequestHandler):
                         "method": delivery.get("method"),
                         "city": delivery.get("city"),
                         "pvz": delivery.get("pvz"),
+                        "pvz_code": delivery.get("pvz_code"),
                         "address": delivery.get("address"),
                     },
                 })
@@ -992,6 +1194,18 @@ class Handler(BaseHTTPRequestHandler):
                     "order_id": order_id,
                     "confirmation_url": confirmation_url,
                 })
+                return
+
+            cdek_match = re.fullmatch(
+                r"/api/admin/orders/(HNX-[A-Z0-9-]+)/cdek",
+                self.path,
+            )
+            if cdek_match:
+                if not admin_authorized(self):
+                    self.send_json(401, {"error": "Требуется ключ администратора"})
+                    return
+                result = create_cdek_shipment(cdek_match.group(1))
+                self.send_json(200, {"ok": True, "cdek": result})
                 return
 
             fulfill_match = re.fullmatch(
