@@ -60,6 +60,26 @@ PRODUCTS = {
     "xiaomi-1c-6400": ("Аккумулятор для Xiaomi Vacuum-Mop 1C, 6400 мАч", 2990),
 }
 
+SHIPPING_PROFILES = {
+    "dyson-v7": {"sku": "BATDYSV7", "weight": 480, "length": 16, "width": 10, "height": 14},
+    "dyson-v6": {"sku": "BATDYSV6", "weight": 440, "length": 15, "width": 11, "height": 9},
+    "dyson-v11": {"sku": "BATDYSV11", "weight": 775, "length": 20, "width": 11, "height": 13},
+    "dreame-5200": {"sku": "BAT1T5200", "weight": 400, "length": 18, "width": 6, "height": 6},
+    "samsung-jet90": {"sku": "BATJET90", "weight": 470, "length": 16, "width": 10, "height": 5},
+    "exvac-3200": {"sku": "BATEXVAC660", "weight": 220, "length": 10, "width": 5, "height": 5},
+    "mop2-lite": {"sku": "BATMOP2LITE", "weight": 220, "length": 10, "width": 5, "height": 5},
+    "mop2-3200": {"sku": "BATMOP2", "weight": 320, "length": 18, "width": 6, "height": 5},
+    "xiaomi-g1": {"sku": "BAT1G3200", "weight": 220, "length": 10, "width": 5, "height": 5},
+    "samsung-jet60": {"sku": "BATJET60", "weight": 450, "length": 16, "width": 10, "height": 5},
+    "lg-a9": {"sku": "BATLGA9", "weight": 450, "length": 12, "width": 12, "height": 7},
+    "samsung-jet70": {"sku": "BATJET70", "weight": 450, "length": 16, "width": 10, "height": 5},
+    "dreame-6400": {"sku": "BAT1T6500", "weight": 430, "length": 18, "width": 6, "height": 6},
+    "xiaomi-1c-5200": {"sku": "BAT1C5200", "weight": 450, "length": 18, "width": 6, "height": 6},
+    "roborock-6400": {"sku": "BATRO6500", "weight": 485, "length": 18, "width": 6, "height": 6},
+    "xiaomi-mopp-3200": {"sku": "BATMOPP", "weight": 300, "length": 18, "width": 6, "height": 6},
+    "xiaomi-1c-6400": {"sku": "BAT1C6500", "weight": 485, "length": 18, "width": 6, "height": 6},
+}
+
 _token = {"value": "", "expires_at": 0.0}
 _token_lock = threading.Lock()
 _cache = {}
@@ -294,17 +314,57 @@ def cdek_post(path, payload):
         raise ApiError("Не удалось получить расчёт доставки СДЭК") from error
 
 
-def delivery_quote(city_code, delivery_method, quantity):
+def build_shipping_package(items):
+    if not isinstance(items, list) or not items:
+        raise ApiError("Корзина пуста", 400)
+
+    total_quantity = 0
+    weight = 0
+    length = 0
+    width = 0
+    height = 0
+    seen = set()
+    for item in items:
+        if not isinstance(item, dict):
+            raise ApiError("Некорректный состав заказа", 400)
+        slug = str(item.get("slug") or "")
+        if slug in seen or slug not in SHIPPING_PROFILES:
+            raise ApiError("Для товара не настроена упаковка", 400)
+        seen.add(slug)
+        try:
+            quantity = int(item.get("quantity"))
+        except (TypeError, ValueError) as error:
+            raise ApiError("Некорректное количество товара", 400) from error
+        if quantity < 1 or quantity > 5:
+            raise ApiError("Некорректное количество товара", 400)
+        profile = SHIPPING_PROFILES[slug]
+        total_quantity += quantity
+        weight += profile["weight"] * quantity
+        length = max(length, profile["length"])
+        width = max(width, profile["width"])
+        height += profile["height"] * quantity
+
+    if total_quantity > 10:
+        raise ApiError("Для крупного заказа свяжитесь с нами", 400)
+    return {
+        "weight": weight,
+        "length": length,
+        "width": width,
+        "height": height,
+    }
+
+
+def delivery_quote(city_code, delivery_method, items):
     try:
         city_code = int(city_code)
-        quantity = int(quantity)
     except (TypeError, ValueError) as error:
         raise ApiError("Некорректные данные для расчёта доставки", 400) from error
-    if city_code <= 0 or quantity < 1 or quantity > 10:
+    if city_code <= 0:
         raise ApiError("Некорректные данные для расчёта доставки", 400)
     if delivery_method not in ("cdek-pvz", "cdek-courier"):
         raise ApiError("Выберите способ доставки СДЭК", 400)
 
+    package = build_shipping_package(items)
     sender = resolve_city("Воронеж")
     tariff_code = 138 if delivery_method == "cdek-pvz" else 136
     result = cdek_post("/v2/calculator/tariff", {
@@ -312,12 +372,7 @@ def delivery_quote(city_code, delivery_method, quantity):
         "tariff_code": tariff_code,
         "from_location": {"code": sender["code"]},
         "to_location": {"code": city_code},
-        "packages": [{
-            "weight": 600 * quantity,
-            "length": 25,
-            "width": 18,
-            "height": min(60, 12 * quantity),
-        }],
+        "packages": [package],
     })
     raw_sum = result.get("total_sum") or result.get("delivery_sum")
     if raw_sum is None:
@@ -330,6 +385,7 @@ def delivery_quote(city_code, delivery_method, quantity):
         "tariff_code": tariff_code,
         "period_min": result.get("period_min"),
         "period_max": result.get("period_max"),
+        "package": package,
     }
 
 
@@ -411,7 +467,7 @@ def validate_order(payload):
         "email": validate_email(payload.get("email")),
         "vacuum_model": re.sub(r"\s+", " ", str(payload.get("vacuumModel") or "")).strip()[:120],
     }
-    quote = delivery_quote(city_code, delivery_method, total_quantity)
+    quote = delivery_quote(city_code, delivery_method, items)
     return {
         "items": items,
         "total_quantity": total_quantity,
@@ -911,7 +967,7 @@ class Handler(BaseHTTPRequestHandler):
                 quote = delivery_quote(
                     payload.get("cdekCityCode"),
                     payload.get("deliveryMethod"),
-                    payload.get("quantity"),
+                    payload.get("items"),
                 )
                 self.send_json(200, quote)
                 return
