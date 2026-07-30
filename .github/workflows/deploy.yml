@@ -53,14 +53,15 @@ jobs:
           VPS_USER: ${{ secrets.VPS_USER }}
           CDEK_CLIENT_ID: ${{ secrets.CDEK_CLIENT_ID }}
           CDEK_CLIENT_SECRET: ${{ secrets.CDEK_CLIENT_SECRET }}
+          CDEK_SENDER_PHONE: ${{ secrets.CDEK_SENDER_PHONE }}
           YOOKASSA_SHOP_ID: ${{ secrets.YOOKASSA_SHOP_ID }}
           YOOKASSA_SECRET_KEY: ${{ secrets.YOOKASSA_SECRET_KEY }}
           HELIONYX_ADMIN_TOKEN: ${{ secrets.HELIONYX_ADMIN_TOKEN }}
         run: |
           umask 077
           API_ENV="$RUNNER_TEMP/helionyx-api.env"
-          printf 'CDEK_CLIENT_ID=%s\nCDEK_CLIENT_SECRET=%s\nYOOKASSA_SHOP_ID=%s\nYOOKASSA_SECRET_KEY=%s\nHELIONYX_ADMIN_TOKEN=%s\nYOOKASSA_PAYMENTS_ENABLED=1\nYOOKASSA_RECEIPTS_ENABLED=1\nYOOKASSA_VAT_CODE=1\nYOOKASSA_PAYMENT_MODE=full_prepayment\nHELIONYX_PUBLIC_URL=https://helionyx.store\nHELIONYX_DB_PATH=/var/lib/helionyx/orders.sqlite3\nHELIONYX_API_HOST=127.0.0.1\nHELIONYX_API_PORT=8787\n' \
-            "$CDEK_CLIENT_ID" "$CDEK_CLIENT_SECRET" "$YOOKASSA_SHOP_ID" "$YOOKASSA_SECRET_KEY" "$HELIONYX_ADMIN_TOKEN" > "$API_ENV"
+          printf 'CDEK_CLIENT_ID=%s\nCDEK_CLIENT_SECRET=%s\nCDEK_SENDER_NAME=HELIONYX\nCDEK_SENDER_PHONE=%s\nCDEK_SHIPMENT_POINT=VRN5\nCDEK_AUTO_CREATE_ENABLED=1\nYOOKASSA_SHOP_ID=%s\nYOOKASSA_SECRET_KEY=%s\nHELIONYX_ADMIN_TOKEN=%s\nYOOKASSA_PAYMENTS_ENABLED=1\nYOOKASSA_RECEIPTS_ENABLED=1\nYOOKASSA_VAT_CODE=1\nYOOKASSA_PAYMENT_MODE=full_prepayment\nHELIONYX_PUBLIC_URL=https://helionyx.store\nHELIONYX_DB_PATH=/var/lib/helionyx/orders.sqlite3\nHELIONYX_API_HOST=127.0.0.1\nHELIONYX_API_PORT=8787\n' \
+            "$CDEK_CLIENT_ID" "$CDEK_CLIENT_SECRET" "$CDEK_SENDER_PHONE" "$YOOKASSA_SHOP_ID" "$YOOKASSA_SECRET_KEY" "$HELIONYX_ADMIN_TOKEN" > "$API_ENV"
 
           ssh "$VPS_USER@$VPS_HOST" "mkdir -p /tmp/helionyx-deploy/server /tmp/helionyx-deploy/deploy && rm -rf /tmp/helionyx-deploy/deploy/*"
           rsync -az server/app.py "$VPS_USER@$VPS_HOST:/tmp/helionyx-deploy/server/app.py"
