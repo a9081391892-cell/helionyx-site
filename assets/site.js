@@ -49,28 +49,50 @@
   function currentQuoteKey(form, items = getCartItems()) {
     const cityCode = form?.querySelector("[data-cdek-city-code]")?.value || "";
     const method = form?.querySelector("[data-delivery-method]")?.value || "";
-    const quantity = items.reduce((sum, item) => sum + item.quantity, 0);
-    return cityCode && method && quantity ? [cityCode, method, quantity].join(":") : "";
+    const cartSignature = items.map((item) => `${item.slug}:${item.quantity}`).sort().join(",");
+    return cityCode && method && cartSignature ? [cityCode, method, cartSignature].join(":") : "";
+  }
+
+  function hideOrderSummary(form) {
+    const summary = form?.querySelector("[data-order-summary]");
+    if (summary) summary.hidden = true;
+  }
+
+  function showOrderSummary(form, goodsTotal, deliveryAmount) {
+    const summary = form?.querySelector("[data-order-summary]");
+    if (!summary) return;
+    const goods = summary.querySelector("[data-summary-goods]");
+    const delivery = summary.querySelector("[data-summary-delivery]");
+    const total = summary.querySelector("[data-summary-total]");
+    if (goods) goods.textContent = formatPrice(goodsTotal);
+    if (delivery) delivery.textContent = formatPrice(deliveryAmount);
+    if (total) total.textContent = formatPrice(goodsTotal + deliveryAmount);
+    summary.hidden = false;
   }
 
   async function loadOrderQuote(form) {
     const items = getCartItems();
     const key = currentQuoteKey(form, items);
     const status = form?.querySelector("[data-delivery-quote]");
+    const goodsTotal = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
     if (!form || !key || !paymentAvailable) {
       if (status && !key) status.textContent = "";
+      hideOrderSummary(form);
       renderPaymentButton(form, items);
       return;
     }
     if (form.dataset.quoteKey === key) {
+      const deliveryAmount = Number(form.dataset.deliveryAmount);
+      if (Number.isFinite(deliveryAmount)) showOrderSummary(form, goodsTotal, deliveryAmount);
       renderPaymentButton(form, items);
       return;
     }
 
     const quantity = items.reduce((sum, item) => sum + item.quantity, 0);
-    const goodsTotal = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
     if (status) status.textContent = "Рассчитываем доставку СДЭК…";
     form.dataset.quoteKey = "";
+    form.dataset.deliveryAmount = "";
+    hideOrderSummary(form);
 
     try {
       const response = await fetch("/api/cdek/quote", {
@@ -84,15 +106,19 @@
       });
       const payload = await readApiJson(response);
       if (!response.ok) throw new Error(payload.error || "Не удалось рассчитать доставку.");
+      const deliveryAmount = Number(payload.amount);
+      if (!Number.isFinite(deliveryAmount)) throw new Error("СДЭК вернул некорректную стоимость доставки.");
       form.dataset.quoteKey = key;
-      form.dataset.deliveryAmount = String(payload.amount);
-      const period = payload.period_min
-        ? ` · ориентировочно ${payload.period_min}–${payload.period_max || payload.period_min} дн.`
-        : "";
+      form.dataset.deliveryAmount = String(deliveryAmount);
+      showOrderSummary(form, goodsTotal, deliveryAmount);
       if (status) {
-        status.textContent = `Доставка: ${formatPrice(payload.amount)}${period} Итого: ${formatPrice(goodsTotal + payload.amount)}.`;
+        status.textContent = payload.period_min
+          ? `Ориентировочный срок доставки: ${payload.period_min}–${payload.period_max || payload.period_min} дн.`
+          : "Стоимость доставки рассчитана.";
       }
     } catch (error) {
+      form.dataset.deliveryAmount = "";
+      hideOrderSummary(form);
       if (status) status.textContent = error.message || "Не удалось рассчитать доставку.";
     }
     renderPaymentButton(form, items);
@@ -167,6 +193,12 @@
         '<div data-delivery-pvz><label class="checkout-field"><span>Пункт выдачи СДЭК *</span><input name="cdekPvz" data-cdek-pvz type="text" maxlength="180" placeholder="Сначала укажите город и загрузите ПВЗ" required></label><div class="checkout-pvz-actions"><button class="checkout-map-button" type="button" data-load-pvz>Показать ПВЗ СДЭК</button><a class="checkout-map-link" href="https://www.cdek.ru/ru/offices/" target="_blank" rel="noopener">Открыть карту ↗</a></div><p class="checkout-pvz-status" data-pvz-status role="status" aria-live="polite"></p><label class="checkout-field" data-pvz-select-wrap hidden><span>Выберите удобный пункт</span><select data-pvz-select><option value="">Выберите ПВЗ</option></select></label></div>',
         '<div data-delivery-courier hidden><label class="checkout-field"><span>Адрес доставки *</span><input name="deliveryAddress" type="text" autocomplete="street-address" maxlength="240" placeholder="Улица, дом, квартира"></label></div>',
         '<p class="checkout-delivery__note">Литий-ионные аккумуляторы отправляем СДЭК только наземным транспортом.</p><p class="checkout-delivery__note" data-delivery-quote aria-live="polite"></p>',
+        "</div>",
+        '<div class="checkout-summary" data-order-summary aria-live="polite" hidden>',
+        '<div class="checkout-summary__row"><span>Товары</span><strong data-summary-goods>—</strong></div>',
+        '<div class="checkout-summary__row"><span>Доставка СДЭК</span><strong data-summary-delivery>—</strong></div>',
+        '<div class="checkout-summary__row checkout-summary__total"><span>Итого к оплате</span><strong data-summary-total>—</strong></div>',
+        '<p class="checkout-summary__note">Доставка уже включена в итог. В ЮKassa будет выставлена именно эта сумма.</p>',
         "</div>",
         '<label class="checkout-checkbox"><input name="consent" type="checkbox" required><span>Согласен на обработку персональных данных и принимаю <a href="' + assetPrefix() + 'privacy/" target="_blank" rel="noopener">политику конфиденциальности</a>.</span></label>',
         '<button class="button button--wide checkout-submit" type="submit" disabled data-checkout-submit>Оплата временно закрыта</button>',
@@ -474,6 +506,8 @@
       const form = deliveryMethod.closest("[data-checkout-form]");
       if (form) {
         form.dataset.quoteKey = "";
+        form.dataset.deliveryAmount = "";
+        hideOrderSummary(form);
         loadOrderQuote(form);
       }
     }
@@ -500,6 +534,7 @@
     if (pvzInput) pvzInput.value = "";
     form.dataset.quoteKey = "";
     form.dataset.deliveryAmount = "";
+    hideOrderSummary(form);
     if (selectWrap) selectWrap.hidden = true;
     if (pvzStatus) pvzStatus.textContent = "";
     scheduleCitySearch(cityInput);
