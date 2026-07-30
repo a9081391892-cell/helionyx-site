@@ -58,7 +58,7 @@ jobs:
         run: |
           umask 077
           API_ENV="$RUNNER_TEMP/helionyx-api.env"
-          printf 'CDEK_CLIENT_ID=%s\nCDEK_CLIENT_SECRET=%s\nYOOKASSA_SHOP_ID=%s\nYOOKASSA_SECRET_KEY=%s\nYOOKASSA_PAYMENTS_ENABLED=0\nYOOKASSA_RECEIPTS_ENABLED=0\nYOOKASSA_VAT_CODE=1\nYOOKASSA_PAYMENT_MODE=full_prepayment\nHELIONYX_PUBLIC_URL=https://helionyx.store\nHELIONYX_DB_PATH=/var/lib/helionyx/orders.sqlite3\nHELIONYX_API_HOST=127.0.0.1\nHELIONYX_API_PORT=8787\n' \
+          printf 'CDEK_CLIENT_ID=%s\nCDEK_CLIENT_SECRET=%s\nYOOKASSA_SHOP_ID=%s\nYOOKASSA_SECRET_KEY=%s\nYOOKASSA_PAYMENTS_ENABLED=0\nYOOKASSA_RECEIPTS_ENABLED=1\nYOOKASSA_VAT_CODE=1\nYOOKASSA_PAYMENT_MODE=full_prepayment\nHELIONYX_PUBLIC_URL=https://helionyx.store\nHELIONYX_DB_PATH=/var/lib/helionyx/orders.sqlite3\nHELIONYX_API_HOST=127.0.0.1\nHELIONYX_API_PORT=8787\n' \
             "$CDEK_CLIENT_ID" "$CDEK_CLIENT_SECRET" "$YOOKASSA_SHOP_ID" "$YOOKASSA_SECRET_KEY" > "$API_ENV"
 
           ssh "$VPS_USER@$VPS_HOST" "mkdir -p /tmp/helionyx-deploy/server /tmp/helionyx-deploy/deploy && rm -rf /tmp/helionyx-deploy/deploy/*"
