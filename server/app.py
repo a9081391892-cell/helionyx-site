@@ -498,6 +498,14 @@ def get_order(order_id):
         ).fetchone()
 
 
+def get_order_by_payment_id(payment_id):
+    with db_connect() as connection:
+        return connection.execute(
+            "SELECT id, status, payment_id, amount, created_at FROM orders WHERE payment_id = ?",
+            (payment_id,),
+        ).fetchone()
+
+
 def yookassa_request(method, path, payload=None, idempotence_key=None):
     credentials = base64.b64encode(
         ("%s:%s" % (YOOKASSA_SHOP_ID, YOOKASSA_SECRET_KEY)).encode("utf-8")
@@ -610,6 +618,30 @@ def verify_payment(payment_id):
         update_order(order_id, "pending", payment_id)
     return order_id, status
 
+
+def verify_refund(refund_id):
+    refund = yookassa_request("GET", "/refunds/" + refund_id)
+    payment_id = str(refund.get("payment_id") or "")
+    if not payment_id:
+        raise ApiError("В возврате отсутствует идентификатор платежа")
+
+    order = get_order_by_payment_id(payment_id)
+    if not order:
+        raise ApiError("Возврат не связан с заказом", 400)
+
+    status = str(refund.get("status") or "")
+    amount_value = str((refund.get("amount") or {}).get("value") or "")
+    try:
+        refund_amount = int(round(float(amount_value)))
+    except (TypeError, ValueError) as error:
+        raise ApiError("В возврате отсутствует корректная сумма", 400) from error
+    if refund_amount <= 0 or refund_amount > order["amount"]:
+        raise ApiError("Сумма возврата не совпадает с заказом", 400)
+
+    if status == "succeeded":
+        order_status = "refunded" if refund_amount == order["amount"] else "partially_refunded"
+        update_order(order["id"], order_status, payment_id)
+    return order["id"], status
 
 
 def rate_limited(ip):
@@ -776,12 +808,19 @@ class Handler(BaseHTTPRequestHandler):
             if self.path == "/api/yookassa/webhook":
                 payload = self.read_json_body()
                 event = str(payload.get("event") or "")
-                payment_id = str((payload.get("object") or {}).get("id") or "")
-                if event not in ("payment.succeeded", "payment.canceled") or not payment_id:
+                object_id = str((payload.get("object") or {}).get("id") or "")
+                if not object_id:
                     self.send_json(200, {"ok": True})
                     return
-                order_id, status = verify_payment(payment_id)
-                self.send_json(200, {"ok": True, "order_id": order_id, "status": status})
+                if event in ("payment.succeeded", "payment.canceled"):
+                    order_id, status = verify_payment(object_id)
+                    self.send_json(200, {"ok": True, "order_id": order_id, "status": status})
+                    return
+                if event == "refund.succeeded":
+                    order_id, status = verify_refund(object_id)
+                    self.send_json(200, {"ok": True, "order_id": order_id, "status": status})
+                    return
+                self.send_json(200, {"ok": True})
                 return
 
             self.send_json(404, {"error": "Not found"})
