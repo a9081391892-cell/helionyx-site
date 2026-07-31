@@ -1,0 +1,37 @@
+name: Remove Drive2 phrase from Xiaomi 1C article
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/remove-drive2-phrase.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  update-article:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Remove phrase and link
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('articles/zamena-akkumulyatora-xiaomi-vacuum-mop-1c/index.html')
+          text = path.read_text(encoding='utf-8')
+          old = ' <a href="https://www.drive2.ru/b/702440321786585593/" target="_blank" rel="noopener nofollow">Практический кейс владельца на Drive2</a>.'
+          if old not in text:
+              raise SystemExit('Requested phrase was not found')
+          path.write_text(text.replace(old, '', 1), encoding='utf-8')
+          PY
+
+      - name: Commit change
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add articles/zamena-akkumulyatora-xiaomi-vacuum-mop-1c/index.html
+          git commit -m "Remove Drive2 phrase from Xiaomi 1C article"
+          git push
