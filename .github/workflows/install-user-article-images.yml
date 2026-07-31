@@ -1,0 +1,39 @@
+name: Install user article images
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'deploy/image-chunks/*-micro.b64'
+      - '.github/workflows/install-user-article-images.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  install:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - name: Decode uploaded artwork
+        run: |
+          base64 --decode deploy/image-chunks/9800-micro.b64 > assets/articles/9800-mah-obman.jpg
+          base64 --decode deploy/image-chunks/honest-micro.b64 > assets/articles/chestnyy-akkumulyator.jpg
+          base64 --decode deploy/image-chunks/cheap-micro.b64 > assets/articles/deshevo-ne-bezopasno.jpg
+          test -s assets/articles/9800-mah-obman.jpg
+          test -s assets/articles/chestnyy-akkumulyator.jpg
+          test -s assets/articles/deshevo-ne-bezopasno.jpg
+      - name: Commit article images
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add assets/articles/9800-mah-obman.jpg assets/articles/chestnyy-akkumulyator.jpg assets/articles/deshevo-ne-bezopasno.jpg
+          if git diff --cached --quiet; then
+            echo 'Images are already current.'
+          else
+            git commit -m 'Replace capacity article images with user artwork'
+            git push origin main
+          fi
