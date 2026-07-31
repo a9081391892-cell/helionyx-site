@@ -1,0 +1,49 @@
+name: Fix navigation on catalog and contacts
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/fix-navigation-all-pages.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  fix-navigation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Add articles link
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          for filename in ["catalog/index.html", "contacts/index.html"]:
+              path = Path(filename)
+              text = path.read_text(encoding="utf-8")
+              old = '''          <a href="../catalog/">Каталог</a>
+          <a href="../#selection">Подбор аккумулятора</a>
+          <a href="../contacts/">Контакты</a>'''
+              new = '''          <a href="../catalog/">Каталог</a>
+          <a href="../#selection">Подбор аккумулятора</a>
+          <a href="../articles/">Полезные статьи</a>
+          <a href="../contacts/">Контакты</a>'''
+              if '../articles/' not in text.split('</nav>', 1)[0]:
+                  if old not in text:
+                      raise SystemExit(f"Navigation pattern not found in {filename}")
+                  text = text.replace(old, new, 1)
+                  path.write_text(text, encoding="utf-8")
+
+          workflow = Path('.github/workflows/fix-navigation-all-pages.yml')
+          workflow.unlink()
+          PY
+
+      - name: Commit navigation fix
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add catalog/index.html contacts/index.html .github/workflows/fix-navigation-all-pages.yml
+          git commit -m "Add articles link to catalog and contacts navigation"
+          git push
