@@ -1,0 +1,54 @@
+name: Fix navigation catalog contacts v2
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/fix-navigation-catalog-contacts-v2.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  fix-navigation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Add articles link to catalog and contacts
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          files = [Path('catalog/index.html'), Path('contacts/index.html')]
+          old = '          <a href="../#selection">Подбор аккумулятора</a>\n          <a href="../contacts/">Контакты</a>'
+          new = '          <a href="../#selection">Подбор аккумулятора</a>\n          <a href="../articles/">Полезные статьи</a>\n          <a href="../contacts/">Контакты</a>'
+
+          changed = False
+          for path in files:
+              text = path.read_text(encoding='utf-8')
+              if '../articles/' in text.split('</nav>', 1)[0]:
+                  print(f'{path}: ссылка уже есть')
+                  continue
+              if old not in text:
+                  raise SystemExit(f'{path}: ожидаемый блок меню не найден')
+              path.write_text(text.replace(old, new, 1), encoding='utf-8')
+              print(f'{path}: ссылка добавлена')
+              changed = True
+
+          if not changed:
+              print('Изменения не требуются')
+          PY
+
+      - name: Commit changes
+        run: |
+          if git diff --quiet; then
+            echo "No changes"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add catalog/index.html contacts/index.html
+          git commit -m "Add articles link to catalog and contacts navigation"
+          git push
