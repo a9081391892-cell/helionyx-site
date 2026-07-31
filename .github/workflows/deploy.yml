@@ -23,8 +23,8 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Enrich Xiaomi 1C SEO pages
-        run: python3 deploy/enrich-xiaomi-1c-seo.py
+      - name: Enrich all battery pages from HELIONYX catalog
+        run: python3 deploy/enrich-battery-catalog-all.py
 
       - name: Prepare SSH connection
         env:
