@@ -45,7 +45,7 @@ jobs:
             --exclude 'server/' \
             --exclude 'deploy/' \
             ./ "$VPS_USER@$VPS_HOST:/var/www/helionyx/"
-          ssh "$VPS_USER@$VPS_HOST" "test -f /var/www/helionyx/index.html"
+          ssh "$VPS_USER@$VPS_HOST" "cat /var/www/helionyx/assets/premium.css >> /var/www/helionyx/assets/site.css && test -f /var/www/helionyx/index.html"
 
       - name: Deploy CDEK API
         env:
