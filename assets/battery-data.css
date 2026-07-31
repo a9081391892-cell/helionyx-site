@@ -1,0 +1,158 @@
+/* Authoritative HELIONYX battery data blocks — light theme */
+.battery-catalog-section {
+  border-block: 1px solid var(--line);
+}
+
+.battery-catalog,
+.battery-tech {
+  display: grid;
+  gap: 28px;
+}
+
+.battery-catalog__heading,
+.battery-tech__heading {
+  max-width: 850px;
+}
+
+.battery-catalog__heading > p,
+.battery-tech__heading > p {
+  margin: 10px 0 0;
+  color: var(--muted);
+  line-height: 1.65;
+}
+
+.battery-catalog__model-note {
+  padding: 12px 16px;
+  border: 1px solid #dce6f6;
+  border-radius: 14px;
+  background: #f7faff;
+}
+
+.battery-catalog__columns {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 18px;
+  align-items: start;
+}
+
+.battery-catalog__columns article,
+.battery-tech__grid > div,
+.battery-tech__details {
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: #fff;
+  box-shadow: 0 12px 34px rgba(20, 54, 105, .06);
+}
+
+.battery-catalog__columns article {
+  padding: 22px;
+}
+
+.battery-catalog__columns h3,
+.battery-tech__details h3 {
+  margin: 0 0 14px;
+  color: var(--ink);
+  font-size: 18px;
+}
+
+.battery-catalog__columns ul,
+.battery-tech__details ul {
+  margin: 0;
+  padding-left: 20px;
+}
+
+.battery-catalog__columns li,
+.battery-tech__details li {
+  margin: 8px 0;
+  color: #35445d;
+  line-height: 1.55;
+}
+
+.battery-tech__grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  margin: 0;
+}
+
+.battery-tech__grid > div {
+  padding: 18px 20px;
+}
+
+.battery-tech__grid dt {
+  margin-bottom: 7px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.battery-tech__grid dd {
+  margin: 0;
+  color: var(--ink);
+  font-weight: 700;
+  line-height: 1.45;
+}
+
+.battery-tech__details {
+  overflow: hidden;
+}
+
+.battery-tech__details summary {
+  padding: 18px 22px;
+  cursor: pointer;
+  color: var(--ink);
+  font-weight: 750;
+  list-style-position: inside;
+}
+
+.battery-tech__details[open] summary {
+  border-bottom: 1px solid var(--line);
+  background: #f8faff;
+}
+
+.battery-tech__details-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 20px;
+  padding: 22px;
+}
+
+.battery-tech__document {
+  padding: 20px 22px;
+}
+
+.battery-tech__document p {
+  margin: 9px 0;
+  color: #35445d;
+  line-height: 1.6;
+}
+
+@media (max-width: 960px) {
+  .battery-catalog__columns,
+  .battery-tech__grid,
+  .battery-tech__details-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .battery-catalog__columns,
+  .battery-tech__grid,
+  .battery-tech__details-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .battery-catalog__columns article,
+  .battery-tech__grid > div {
+    padding: 18px;
+  }
+
+  .battery-tech__details summary {
+    padding: 16px 18px;
+  }
+
+  .battery-tech__details-grid,
+  .battery-tech__document {
+    padding: 18px;
+  }
+}
