@@ -17,3 +17,12 @@ window.HELIONYX_PRODUCTS = [{"slug": "dyson-v7", "title": "Аккумулято�
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", addXiaomi1cGuideLink);
   else addXiaomi1cGuideLink();
 })();
+
+(function () {
+  if (document.querySelector('script[data-helionyx-quick-search]')) return;
+  var script = document.createElement("script");
+  script.src = "/assets/quick-search.js";
+  script.defer = true;
+  script.setAttribute("data-helionyx-quick-search", "");
+  document.head.appendChild(script);
+})();
