@@ -1,0 +1,45 @@
+name: Restore articles navigation
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/restore-articles-nav.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  patch-navigation:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Restore articles link
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('index.html')
+          text = path.read_text(encoding='utf-8')
+          link = '          <a href="articles/">Полезные статьи</a>\n'
+          marker = '          <a href="#selection">Подбор аккумулятора</a>\n'
+          if 'href="articles/"' not in text:
+              if marker not in text:
+                  raise SystemExit('Navigation marker not found')
+              text = text.replace(marker, marker + link, 1)
+              path.write_text(text, encoding='utf-8')
+          PY
+
+      - name: Commit navigation fix
+        run: |
+          if git diff --quiet; then
+            echo "Navigation already contains articles link"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add index.html
+          git commit -m "Restore articles link in main navigation"
+          git push
