@@ -2,6 +2,8 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url><loc>https://helionyx.store/</loc><lastmod>2026-07-28</lastmod><changefreq>weekly</changefreq><priority>1.0</priority></url>
   <url><loc>https://helionyx.store/catalog/</loc><lastmod>2026-07-27</lastmod><changefreq>weekly</changefreq><priority>0.9</priority></url>
+  <url><loc>https://helionyx.store/articles/</loc><lastmod>2026-07-31</lastmod><changefreq>weekly</changefreq><priority>0.8</priority></url>
+  <url><loc>https://helionyx.store/articles/zamena-akkumulyatora-xiaomi-vacuum-mop-1c/</loc><lastmod>2026-07-31</lastmod><changefreq>monthly</changefreq><priority>0.9</priority></url>
   <url><loc>https://helionyx.store/products/dyson-v7/</loc><lastmod>2026-07-27</lastmod><changefreq>weekly</changefreq><priority>0.8</priority></url>
   <url><loc>https://helionyx.store/products/dyson-v6/</loc><lastmod>2026-07-27</lastmod><changefreq>weekly</changefreq><priority>0.8</priority></url>
   <url><loc>https://helionyx.store/products/dyson-v11/</loc><lastmod>2026-07-27</lastmod><changefreq>weekly</changefreq><priority>0.8</priority></url>
@@ -15,10 +17,10 @@
   <url><loc>https://helionyx.store/products/lg-a9/</loc><lastmod>2026-07-27</lastmod><changefreq>weekly</changefreq><priority>0.8</priority></url>
   <url><loc>https://helionyx.store/products/samsung-jet70/</loc><lastmod>2026-07-27</lastmod><changefreq>weekly</changefreq><priority>0.8</priority></url>
   <url><loc>https://helionyx.store/products/dreame-6400/</loc><lastmod>2026-07-27</lastmod><changefreq>weekly</changefreq><priority>0.8</priority></url>
-  <url><loc>https://helionyx.store/products/xiaomi-1c-5200/</loc><lastmod>2026-07-27</lastmod><changefreq>weekly</changefreq><priority>0.8</priority></url>
+  <url><loc>https://helionyx.store/products/xiaomi-1c-5200/</loc><lastmod>2026-07-31</lastmod><changefreq>weekly</changefreq><priority>0.8</priority></url>
   <url><loc>https://helionyx.store/products/roborock-6400/</loc><lastmod>2026-07-27</lastmod><changefreq>weekly</changefreq><priority>0.8</priority></url>
   <url><loc>https://helionyx.store/products/xiaomi-mopp-3200/</loc><lastmod>2026-07-27</lastmod><changefreq>weekly</changefreq><priority>0.8</priority></url>
-  <url><loc>https://helionyx.store/products/xiaomi-1c-6400/</loc><lastmod>2026-07-27</lastmod><changefreq>weekly</changefreq><priority>0.8</priority></url>
+  <url><loc>https://helionyx.store/products/xiaomi-1c-6400/</loc><lastmod>2026-07-31</lastmod><changefreq>weekly</changefreq><priority>0.8</priority></url>
   <url><loc>https://helionyx.store/documents/un38-3/</loc><lastmod>2026-07-27</lastmod><changefreq>monthly</changefreq><priority>0.6</priority></url>
   <url><loc>https://helionyx.store/contacts/</loc><lastmod>2026-07-27</lastmod><changefreq>weekly</changefreq><priority>0.5</priority></url>
   <url><loc>https://helionyx.store/privacy/</loc><lastmod>2026-07-27</lastmod><changefreq>weekly</changefreq><priority>0.2</priority></url>
