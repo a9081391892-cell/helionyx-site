@@ -35,6 +35,9 @@ jobs:
       - name: Replace capacity visuals with approved artwork
         run: python3 deploy/replace-capacity-visuals.py
 
+      - name: Install Yandex Metrika on every page
+        run: python3 deploy/add-yandex-metrika.py
+
       - name: Prepare SSH connection
         env:
           SSH_PRIVATE_KEY: ${{ secrets.VPS_SSH_KEY }}
