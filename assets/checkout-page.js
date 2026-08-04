@@ -3,12 +3,18 @@
 
   function arrangeCheckout() {
     const form = document.querySelector("[data-checkout-form]");
-    const detailsHost = document.querySelector("[data-checkout-details-host]");
-    const sidebar = document.querySelector("[data-checkout-sidebar]");
-    if (!form || !detailsHost || !sidebar || form.dataset.arranged === "true") return false;
+    const layout = document.querySelector(".checkout-layout");
+    const productsCard = document.querySelector(".checkout-products");
+    const totalCard = document.querySelector(".checkout-total-card");
+    if (!form || !layout || !productsCard || !totalCard || form.dataset.arranged === "true") return false;
 
     form.dataset.arranged = "true";
     form.classList.add("checkout-form--page");
+
+    const leftColumn = document.createElement("div");
+    leftColumn.className = "checkout-main";
+    const rightColumn = document.createElement("aside");
+    rightColumn.className = "checkout-sidebar";
 
     const detailsCard = document.createElement("section");
     detailsCard.className = "checkout-card checkout-details";
@@ -40,9 +46,10 @@
     security.innerHTML = '<strong>Безопасная оплата</strong><span>Оплата проходит на защищённой странице ЮKassa. Данные банковской карты не передаются HELIONYX.</span><a href="contacts/">Оплата, доставка и возврат</a>';
     paymentCard.appendChild(security);
 
-    detailsHost.appendChild(detailsCard);
-    sidebar.appendChild(paymentCard);
-    form.append(detailsCard, paymentCard);
+    leftColumn.append(productsCard, detailsCard);
+    rightColumn.append(totalCard, paymentCard);
+    form.append(leftColumn, rightColumn);
+    layout.replaceChildren(form);
     return true;
   }
 
