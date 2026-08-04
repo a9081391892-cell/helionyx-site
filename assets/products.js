@@ -44,3 +44,12 @@ window.HELIONYX_PRODUCTS = [{"slug": "dyson-v7", "title": "Аккумулято�
   script.setAttribute("data-helionyx-catalog-filters", "");
   document.head.appendChild(script);
 })();
+
+(function () {
+  if (window.location.pathname !== "/catalog/" || document.querySelector('script[data-helionyx-catalog-cards]')) return;
+  var script = document.createElement("script");
+  script.src = "/assets/catalog-cards.js";
+  script.defer = true;
+  script.setAttribute("data-helionyx-catalog-cards", "");
+  document.head.appendChild(script);
+})();
