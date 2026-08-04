@@ -14,10 +14,12 @@
   }
 
   function saveCookieChoice(choice) {
-    localStorage.setItem(
-      COOKIE_KEY,
-      JSON.stringify({ choice: choice, version: COOKIE_VERSION, savedAt: new Date().toISOString() })
-    );
+    try {
+      localStorage.setItem(
+        COOKIE_KEY,
+        JSON.stringify({ choice: choice, version: COOKIE_VERSION, savedAt: new Date().toISOString() })
+      );
+    } catch (error) {}
     window.dispatchEvent(new CustomEvent("helionyx:cookie-consent", { detail: { choice: choice } }));
     syncCookieCheckboxes();
   }
@@ -31,13 +33,14 @@
     var style = document.createElement("style");
     style.setAttribute("data-consent-styles", "");
     style.textContent = [
-      ".cookie-consent{position:fixed;left:20px;right:20px;bottom:20px;z-index:1200;max-width:920px;margin:auto;background:#fff;border:1px solid rgba(13,95,255,.18);border-radius:18px;box-shadow:0 18px 60px rgba(15,23,42,.2);padding:18px}",
+      ".cookie-consent{position:fixed!important;left:20px;right:20px;bottom:20px;z-index:2147483647!important;max-width:920px;margin:auto;background:#fff;border:1px solid rgba(13,95,255,.18);border-radius:18px;box-shadow:0 18px 60px rgba(15,23,42,.2);padding:18px;pointer-events:auto!important;isolation:isolate;transform:translateZ(0)}",
+      ".cookie-consent,.cookie-consent *{pointer-events:auto!important}",
       ".cookie-consent__inner{display:flex;align-items:center;gap:18px;justify-content:space-between}",
       ".cookie-consent__copy{font-size:14px;line-height:1.5;color:#334155}",
       ".cookie-consent__copy strong{display:block;margin-bottom:4px;color:#0f172a;font-size:16px}",
-      ".cookie-consent__copy a{color:#0d5fff;text-decoration:underline}",
-      ".cookie-consent__actions{display:flex;gap:10px;flex:0 0 auto}",
-      ".cookie-consent__button{border:1px solid #0d5fff;border-radius:10px;padding:10px 16px;font:inherit;font-weight:700;cursor:pointer;background:#fff;color:#0d5fff}",
+      ".cookie-consent__copy a{color:#0d5fff;text-decoration:underline;cursor:pointer!important}",
+      ".cookie-consent__actions{display:flex;gap:10px;flex:0 0 auto;position:relative;z-index:2}",
+      ".cookie-consent__button{position:relative;z-index:3;border:1px solid #0d5fff;border-radius:10px;padding:10px 16px;font:inherit;font-weight:700;cursor:pointer!important;background:#fff;color:#0d5fff;touch-action:manipulation;user-select:none}",
       ".cookie-consent__button--accept{background:#0d5fff;color:#fff}",
       ".checkout-cookie-note{margin-top:10px}",
       ".consent-error{margin:8px 0 0;color:#b42318;font-size:13px;line-height:1.4}",
@@ -46,8 +49,24 @@
     document.head.appendChild(style);
   }
 
+  function closeCookieBanner() {
+    var banner = document.querySelector("[data-cookie-consent]");
+    if (banner) banner.remove();
+  }
+
+  function chooseCookies(choice, event) {
+    if (event) {
+      event.preventDefault();
+      event.stopPropagation();
+      if (event.stopImmediatePropagation) event.stopImmediatePropagation();
+    }
+    saveCookieChoice(choice);
+    closeCookieBanner();
+  }
+
   function showCookieBanner() {
     if (getCookieChoice() || document.querySelector("[data-cookie-consent]")) return;
+
     var banner = document.createElement("section");
     banner.className = "cookie-consent";
     banner.setAttribute("data-cookie-consent", "");
@@ -61,11 +80,13 @@
           '<button class="cookie-consent__button cookie-consent__button--accept" type="button" data-cookie-accept>Согласен</button>' +
         '</div>' +
       '</div>';
-    document.body.appendChild(banner);
-  }
 
-  function closeCookieBanner() {
-    document.querySelector("[data-cookie-consent]")?.remove();
+    document.body.appendChild(banner);
+
+    var accept = banner.querySelector("[data-cookie-accept]");
+    var reject = banner.querySelector("[data-cookie-reject]");
+    if (accept) accept.addEventListener("click", function (event) { chooseCookies("accepted", event); }, true);
+    if (reject) reject.addEventListener("click", function (event) { chooseCookies("necessary", event); }, true);
   }
 
   function syncCookieCheckboxes() {
@@ -104,27 +125,19 @@
       existing.setAttribute("data-personal-consent-error", "");
       existing.textContent = "Для оформления заказа подтвердите согласие на обработку персональных данных.";
       var personal = form.querySelector("[data-personal-consent]");
-      personal?.closest(".checkout-checkbox")?.insertAdjacentElement("afterend", existing);
+      if (personal && personal.closest(".checkout-checkbox")) {
+        personal.closest(".checkout-checkbox").insertAdjacentElement("afterend", existing);
+      }
     }
-    form.querySelector("[data-personal-consent]")?.focus();
+    var field = form.querySelector("[data-personal-consent]");
+    if (field) field.focus();
   }
 
   document.addEventListener("click", function (event) {
-    if (event.target.closest("[data-cookie-accept]")) {
-      saveCookieChoice("accepted");
-      closeCookieBanner();
-      return;
-    }
-    if (event.target.closest("[data-cookie-reject]")) {
-      saveCookieChoice("necessary");
-      closeCookieBanner();
-      return;
-    }
-
-    var whatsapp = event.target.closest("[data-checkout-whatsapp]");
+    var whatsapp = event.target.closest && event.target.closest("[data-checkout-whatsapp]");
     if (whatsapp && !whatsapp.classList.contains("is-disabled")) {
       var form = document.querySelector("[data-checkout-form]");
-      var personal = form?.querySelector("[data-personal-consent]");
+      var personal = form && form.querySelector("[data-personal-consent]");
       if (personal && !personal.checked) {
         event.preventDefault();
         showPersonalConsentError(form);
@@ -133,14 +146,16 @@
   }, true);
 
   document.addEventListener("change", function (event) {
-    var cookieCheckbox = event.target.closest("[data-cookie-order-consent]");
+    var cookieCheckbox = event.target.closest && event.target.closest("[data-cookie-order-consent]");
     if (cookieCheckbox) {
       saveCookieChoice(cookieCheckbox.checked ? "accepted" : "necessary");
       closeCookieBanner();
     }
-    var personal = event.target.closest("[data-personal-consent]");
+    var personal = event.target.closest && event.target.closest("[data-personal-consent]");
     if (personal && personal.checked) {
-      personal.closest("[data-checkout-form]")?.querySelector("[data-personal-consent-error]")?.remove();
+      var form = personal.closest("[data-checkout-form]");
+      var error = form && form.querySelector("[data-personal-consent-error]");
+      if (error) error.remove();
     }
   });
 
