@@ -1,19 +1,26 @@
 (function () {
   const isCheckoutPage = window.location.pathname === "/checkout/";
 
-  function applyCheckoutRouting() {
+  function routeCheckoutLink(link) {
+    if (!link || link.dataset.checkoutPageLink === "true") return;
+    link.textContent = "Перейти к оплате";
+    link.classList.remove("button--whatsapp");
+    link.setAttribute("href", "/checkout/");
+    link.removeAttribute("target");
+    link.dataset.checkoutPageLink = "true";
+  }
+
+  function applyCheckoutRouting(root) {
     if (isCheckoutPage) return;
+    const scope = root && root.querySelectorAll ? root : document;
 
-    document.querySelectorAll(".cart-drawer [data-checkout-form]").forEach((form) => form.remove());
-    document.querySelectorAll('.cart-drawer a[href^="tel:"]').forEach((link) => link.remove());
+    scope.querySelectorAll?.(".cart-drawer [data-checkout-form]").forEach((form) => form.remove());
+    scope.querySelectorAll?.('.cart-drawer a[href^="tel:"]').forEach((link) => link.remove());
+    scope.querySelectorAll?.(".cart-drawer [data-checkout-whatsapp]").forEach(routeCheckoutLink);
 
-    document.querySelectorAll(".cart-drawer [data-checkout-whatsapp]").forEach((link) => {
-      link.textContent = "Перейти к оплате";
-      link.classList.remove("button--whatsapp");
-      link.setAttribute("href", "/checkout/");
-      link.removeAttribute("target");
-      link.dataset.checkoutPageLink = "true";
-    });
+    if (scope.matches?.(".cart-drawer [data-checkout-whatsapp]")) routeCheckoutLink(scope);
+    if (scope.matches?.(".cart-drawer [data-checkout-form]")) scope.remove();
+    if (scope.matches?.('.cart-drawer a[href^="tel:"]')) scope.remove();
   }
 
   document.addEventListener("click", (event) => {
@@ -24,9 +31,20 @@
     window.location.assign("/checkout/");
   }, true);
 
-  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", applyCheckoutRouting);
-  else applyCheckoutRouting();
+  function init() {
+    applyCheckoutRouting(document);
 
-  const observer = new MutationObserver(applyCheckoutRouting);
-  observer.observe(document.documentElement, {childList:true, subtree:true, attributes:true, attributeFilter:["href", "class"]});
+    const observer = new MutationObserver((mutations) => {
+      mutations.forEach((mutation) => {
+        mutation.addedNodes.forEach((node) => {
+          if (node.nodeType === Node.ELEMENT_NODE) applyCheckoutRouting(node);
+        });
+      });
+    });
+
+    observer.observe(document.body, { childList: true, subtree: true });
+  }
+
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init, { once: true });
+  else init();
 })();
