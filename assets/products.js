@@ -26,3 +26,12 @@ window.HELIONYX_PRODUCTS = [{"slug": "dyson-v7", "title": "Аккумулято�
   script.setAttribute("data-helionyx-quick-search", "");
   document.head.appendChild(script);
 })();
+
+(function () {
+  if (document.querySelector('script[data-helionyx-consent]')) return;
+  var script = document.createElement("script");
+  script.src = "/assets/consent.js";
+  script.defer = true;
+  script.setAttribute("data-helionyx-consent", "");
+  document.head.appendChild(script);
+})();
