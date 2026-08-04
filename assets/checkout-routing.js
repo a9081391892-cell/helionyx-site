@@ -3,9 +3,13 @@
 
   function applyCheckoutRouting() {
     if (isCheckoutPage) return;
+
     document.querySelectorAll(".cart-drawer [data-checkout-form]").forEach((form) => form.remove());
-    document.querySelectorAll("[data-checkout-whatsapp]").forEach((link) => {
-      link.textContent = "Оформить заказ";
+    document.querySelectorAll('.cart-drawer a[href^="tel:"]').forEach((link) => link.remove());
+
+    document.querySelectorAll(".cart-drawer [data-checkout-whatsapp]").forEach((link) => {
+      link.textContent = "Перейти к оплате";
+      link.classList.remove("button--whatsapp");
       link.setAttribute("href", "/checkout/");
       link.removeAttribute("target");
       link.dataset.checkoutPageLink = "true";
