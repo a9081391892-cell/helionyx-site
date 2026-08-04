@@ -6,13 +6,23 @@
     const layout = document.querySelector(".checkout-layout");
     const productsCard = document.querySelector(".checkout-products");
     const totalCard = document.querySelector(".checkout-total-card");
-    if (!form || !layout || !productsCard || !totalCard || form.dataset.arranged === "true") return false;
+
+    if (!form || !layout || !productsCard || !totalCard) return false;
+    if (form.dataset.arranged === "true") return true;
 
     form.dataset.arranged = "true";
     form.classList.add("checkout-form--page");
 
+    /*
+     * site.js initially creates the checkout form inside totalCard.
+     * Move it out before moving totalCard, otherwise appending the new
+     * columns to the form would try to put an ancestor inside its child.
+     */
+    layout.appendChild(form);
+
     const leftColumn = document.createElement("div");
     leftColumn.className = "checkout-main";
+
     const rightColumn = document.createElement("aside");
     rightColumn.className = "checkout-sidebar";
 
@@ -50,12 +60,9 @@
     rightColumn.append(totalCard, paymentCard);
     form.append(leftColumn, rightColumn);
     layout.replaceChildren(form);
+
     return true;
   }
 
-  if (arrangeCheckout()) return;
-  const observer = new MutationObserver(() => {
-    if (arrangeCheckout()) observer.disconnect();
-  });
-  observer.observe(document.body, {childList:true, subtree:true});
+  arrangeCheckout();
 })();
