@@ -62,3 +62,14 @@ window.HELIONYX_PRODUCTS = [{"slug": "dyson-v7", "title": "Аккумулято�
   script.setAttribute("data-helionyx-checkout-routing", "");
   document.head.appendChild(script);
 })();
+
+(function () {
+  var path = window.location.pathname;
+  if (path !== "/products/xiaomi-1c-5200/" && path !== "/products/xiaomi-1c-6400/") return;
+  if (document.querySelector('script[data-xiaomi-1c-compatibility]')) return;
+  var script = document.createElement("script");
+  script.src = "/assets/xiaomi-1c-compatibility.js";
+  script.defer = true;
+  script.setAttribute("data-xiaomi-1c-compatibility", "");
+  document.head.appendChild(script);
+})();
