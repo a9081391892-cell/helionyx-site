@@ -46,10 +46,19 @@ window.HELIONYX_PRODUCTS = [{"slug": "dyson-v7", "title": "Аккумулято�
 })();
 
 (function () {
-  if (window.location.pathname !== "/catalog/" || document.querySelector('script[data-helionyx-catalog-cards]')) return;
+  if (document.querySelector('script[data-helionyx-card-enhancements]')) return;
   var script = document.createElement("script");
-  script.src = "/assets/catalog-cards.js";
+  script.src = "/assets/card-enhancements.js";
   script.defer = true;
-  script.setAttribute("data-helionyx-catalog-cards", "");
+  script.setAttribute("data-helionyx-card-enhancements", "");
+  document.head.appendChild(script);
+})();
+
+(function () {
+  if (document.querySelector('script[data-helionyx-checkout-routing]')) return;
+  var script = document.createElement("script");
+  script.src = "/assets/checkout-routing.js";
+  script.defer = true;
+  script.setAttribute("data-helionyx-checkout-routing", "");
   document.head.appendChild(script);
 })();
