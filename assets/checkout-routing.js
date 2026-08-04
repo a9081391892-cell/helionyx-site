@@ -2,7 +2,7 @@
   const isCheckoutPage = window.location.pathname === "/checkout/";
 
   function routeCheckoutLink(link) {
-    if (!link || link.dataset.checkoutPageLink === "true") return;
+    if (!link) return;
     link.textContent = "Перейти к оплате";
     link.classList.remove("button--whatsapp");
     link.setAttribute("href", "/checkout/");
@@ -10,41 +10,54 @@
     link.dataset.checkoutPageLink = "true";
   }
 
-  function applyCheckoutRouting(root) {
+  function normalizeCheckoutDrawer() {
     if (isCheckoutPage) return;
-    const scope = root && root.querySelectorAll ? root : document;
 
-    scope.querySelectorAll?.(".cart-drawer [data-checkout-form]").forEach((form) => form.remove());
-    scope.querySelectorAll?.('.cart-drawer a[href^="tel:"]').forEach((link) => link.remove());
-    scope.querySelectorAll?.(".cart-drawer [data-checkout-whatsapp]").forEach(routeCheckoutLink);
+    document
+      .querySelectorAll(".cart-drawer [data-checkout-form]")
+      .forEach((form) => form.remove());
 
-    if (scope.matches?.(".cart-drawer [data-checkout-whatsapp]")) routeCheckoutLink(scope);
-    if (scope.matches?.(".cart-drawer [data-checkout-form]")) scope.remove();
-    if (scope.matches?.('.cart-drawer a[href^="tel:"]')) scope.remove();
+    document
+      .querySelectorAll('.cart-drawer a[href^="tel:"]')
+      .forEach((link) => link.remove());
+
+    document
+      .querySelectorAll(".cart-drawer [data-checkout-whatsapp]")
+      .forEach(routeCheckoutLink);
   }
 
-  document.addEventListener("click", (event) => {
-    const link = event.target.closest('[data-checkout-page-link="true"]');
-    if (!link) return;
-    event.preventDefault();
-    if (link.classList.contains("is-disabled")) return;
-    window.location.assign("/checkout/");
-  }, true);
+  document.addEventListener(
+    "click",
+    (event) => {
+      if (isCheckoutPage) return;
 
-  function init() {
-    applyCheckoutRouting(document);
+      const checkoutLink = event.target.closest(
+        ".cart-drawer [data-checkout-whatsapp]"
+      );
 
-    const observer = new MutationObserver((mutations) => {
-      mutations.forEach((mutation) => {
-        mutation.addedNodes.forEach((node) => {
-          if (node.nodeType === Node.ELEMENT_NODE) applyCheckoutRouting(node);
-        });
-      });
+      if (checkoutLink) {
+        event.preventDefault();
+        if (checkoutLink.classList.contains("is-disabled")) return;
+        window.location.assign("/checkout/");
+        return;
+      }
+
+      if (
+        event.target.closest(
+          "[data-open-cart], [data-product], [data-qty], [data-remove]"
+        )
+      ) {
+        window.setTimeout(normalizeCheckoutDrawer, 0);
+      }
+    },
+    true
+  );
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", normalizeCheckoutDrawer, {
+      once: true,
     });
-
-    observer.observe(document.body, { childList: true, subtree: true });
+  } else {
+    normalizeCheckoutDrawer();
   }
-
-  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init, { once: true });
-  else init();
 })();
