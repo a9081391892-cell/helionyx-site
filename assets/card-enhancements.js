@@ -1,38 +1,52 @@
 (function () {
   "use strict";
 
-  function installGoldenMiddleHero() {
+  function installHomepageHeroImage() {
     var path = window.location.pathname;
     if (path !== "/" && path !== "/index.html") return;
 
     var heroVisual = document.querySelector(".hero-visual");
-    if (!heroVisual || heroVisual.querySelector("[data-helionyx-golden-middle]")) return;
+    if (!heroVisual || heroVisual.querySelector("[data-helionyx-homepage-hero]")) return;
 
-    if (!document.querySelector("style[data-helionyx-golden-middle-style]")) {
-      var style = document.createElement("style");
-      style.setAttribute("data-helionyx-golden-middle-style", "");
-      style.textContent = [
-        ".hero-visual{min-height:560px}",
-        ".hero-golden-middle{width:min(500px,100%);margin:0;position:relative}",
-        ".hero-golden-middle::before{content:\"\";position:absolute;inset:8% 4% 3%;border-radius:42px;background:radial-gradient(circle at 50% 30%,rgba(255,207,77,.24),transparent 48%),linear-gradient(145deg,rgba(255,255,255,.7),rgba(221,235,255,.5));filter:blur(18px);transform:translateY(18px);z-index:-1}",
-        ".hero-golden-middle img{display:block;width:100%;height:auto;border:1px solid rgba(255,255,255,.92);border-radius:34px;background:#fff;box-shadow:0 24px 70px rgba(21,51,91,.18)}",
-        "@media(max-width:760px){.hero-visual{min-height:auto}.hero-golden-middle{width:min(430px,100%)}}",
-        "@media(max-width:440px){.hero-golden-middle img{border-radius:24px}}"
-      ].join("");
-      document.head.appendChild(style);
-    }
+    var source = "/assets/brand/h.jpg";
+    var image = new Image();
+    image.decoding = "async";
+    image.fetchPriority = "high";
+    image.alt = "HELIONYX — золотая середина между дорогим оригиналом и сомнительными аналогами";
 
-    heroVisual.innerHTML = [
-      '<figure class="hero-golden-middle" data-helionyx-golden-middle>',
-      '<img src="/assets/brand/helionyx-golden-middle.svg?v=20260806" width="900" height="1125" fetchpriority="high" alt="HELIONYX — золотая середина между дорогим оригиналом и сомнительными аналогами">',
-      "</figure>"
-    ].join("");
+    image.onload = function () {
+      if (!document.querySelector("style[data-helionyx-homepage-hero-style]")) {
+        var style = document.createElement("style");
+        style.setAttribute("data-helionyx-homepage-hero-style", "");
+        style.textContent = [
+          ".hero-visual{min-height:560px}",
+          ".hero-homepage-image{width:min(500px,100%);margin:0;position:relative}",
+          ".hero-homepage-image::before{content:\"\";position:absolute;inset:8% 4% 3%;border-radius:42px;background:radial-gradient(circle at 50% 30%,rgba(255,207,77,.22),transparent 48%),linear-gradient(145deg,rgba(255,255,255,.72),rgba(221,235,255,.5));filter:blur(18px);transform:translateY(18px);z-index:-1}",
+          ".hero-homepage-image img{display:block;width:100%;height:auto;border:1px solid rgba(255,255,255,.92);border-radius:34px;background:#fff;box-shadow:0 24px 70px rgba(21,51,91,.18)}",
+          "@media(max-width:760px){.hero-visual{min-height:auto}.hero-homepage-image{width:min(430px,100%)}}",
+          "@media(max-width:440px){.hero-homepage-image img{border-radius:24px}}"
+        ].join("");
+        document.head.appendChild(style);
+      }
+
+      var figure = document.createElement("figure");
+      figure.className = "hero-homepage-image";
+      figure.setAttribute("data-helionyx-homepage-hero", "");
+      figure.appendChild(image);
+      heroVisual.replaceChildren(figure);
+    };
+
+    image.onerror = function () {
+      // Пока h.jpg не загружен, сохраняем действующий блок главной страницы.
+    };
+
+    image.src = source;
   }
 
   if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", installGoldenMiddleHero);
+    document.addEventListener("DOMContentLoaded", installHomepageHeroImage);
   } else {
-    installGoldenMiddleHero();
+    installHomepageHeroImage();
   }
 
   if (window.location.pathname === "/products/xiaomi-1c-6400/" && !document.querySelector('script[data-helionyx-product-reviews]')) {
