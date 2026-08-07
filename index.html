@@ -16,7 +16,9 @@
   <meta property="og:description" content="Аккумуляторы HELIONYX для роботов-пылесосов Xiaomi, Dreame, Roborock и вертикальных пылесосов Dyson, Samsung, LG. Подбор по модели, гарантия 12 месяцев.">
   <meta property="og:url" content="https://helionyx.store/">
   <meta property="og:image" content="https://helionyx.store/assets/brand/helionyx-logo.jpg">
+  <link rel="preload" as="image" href="assets/brand/h.jpg" fetchpriority="high">
   <link rel="stylesheet" href="assets/site.css">
+  <link rel="stylesheet" href="assets/homepage-hero.css">
   
   <script type="application/ld+json">{"@context":"https://schema.org","@type":"WebSite","name":"HELIONYX","alternateName":"HELIONYX аккумуляторы","url":"https://helionyx.store/","inLanguage":"ru-RU"}</script>
   <script type="application/ld+json">{"@context":"https://schema.org","@type":"Organization","name":"HELIONYX","url":"https://helionyx.store/","logo":"https://helionyx.store/assets/brand/helionyx-logo.jpg","email":"shvevgen@yandex.ru","telephone":"+7 908 144-59-33"}</script>
@@ -62,11 +64,10 @@
           </div>
         </div>
         <div class="hero-visual">
-          <div class="hero-logo-card">
-            <img src="assets/brand/helionyx-logo.jpg" alt="HELIONYX">
-            <div><strong>Честная ёмкость</strong><span>Без завышенных цифр</span></div>
-          </div>
-          <div class="energy-card"><span>Li-ion</span><strong>Надёжные элементы</strong><small>для стабильной работы под нагрузкой</small></div>
+          <figure class="hero-homepage-image" data-helionyx-homepage-hero>
+            <img src="assets/brand/h.jpg" alt="HELIONYX — золотая середина между дорогим оригиналом и сомнительными аналогами" decoding="async" fetchpriority="high">
+            <figcaption>HELIONYX — оптимальный выбор по цене, надёжности и доступности.</figcaption>
+          </figure>
         </div>
       </div>
     </section>
@@ -241,9 +242,9 @@
       <div class="container order-steps">
         <div><span class="eyebrow">Как заказать</span><h2>Три простых шага</h2></div>
         <ol>
-          <li><span>1</span><div><strong>Выберите аккумулятор</strong><p>Найдите модель через поиск или каталог.</p></div></li>
-          <li><span>2</span><div><strong>Отправьте заказ</strong><p>Корзина сформирует сообщение для WhatsApp.</p></div></li>
-          <li><span>3</span><div><strong>Подтвердим детали</strong><p>Проверим совместимость, доставку и способ оплаты.</p></div></li>
+          <li><span>1</span><div><strong>Выберите аккумулятор</strong><p>Найдите модель через поиск или каталог и добавьте товар в корзину.</p></div></li>
+          <li><span>2</span><div><strong>Выберите доставку СДЭК</strong><p>Укажите город и выберите пункт выдачи или доставку курьером.</p></div></li>
+          <li><span>3</span><div><strong>Оплатите через СБП</strong><p>После расчёта доставки оплатите на защищённой странице ЮKassa. Чек придёт на email.</p></div></li>
         </ol>
       </div>
     </section>
@@ -285,9 +286,8 @@
       <div class="cart-items" data-cart-items></div>
       <div class="cart-empty" data-cart-empty>Корзина пока пуста</div>
       <div class="cart-total"><span>Товары</span><strong data-cart-total>0 ₽</strong></div>
-      <p class="cart-note">Доставку и способ оплаты согласуем перед отправкой.</p>
-      <a class="button button--wide button--whatsapp" href="#" data-checkout-whatsapp>Оформить в WhatsApp</a>
-      <a class="button button--wide button--outline" href="tel:+79081445933">Позвонить</a>
+      <p class="cart-note">На следующем шаге выберите город и способ доставки СДЭК. Итоговая сумма появится до оплаты.</p>
+      <a class="button button--wide" href="/checkout/" data-checkout-whatsapp>Перейти к оформлению</a>
     </aside>
     
   <script src="assets/products.js"></script>
